@@ -493,6 +493,10 @@ def resolve_external(db, manifest, name, entry, config):
         wanted = {row[0] for row in db.execute('SELECT id FROM docs WHERE text IS NULL AND id LIKE ?', (namespace+':%',))}
         if not wanted: continue
         initial_size = path.stat().st_size
+        expected_size = next((d['bytes'] for d in other.get('files',[]) if 'bytes' in d and path in expand_files(d['path'],base)),None)
+        if expected_size is not None and initial_size != expected_size:
+            errors.append(f'{path.name} 正文仍未完整：{initial_size} / {expected_size} 字节')
+            continue
         bar=progress(rows_of(path),desc='关联正文 '+path.name,unit='doc')
         try:
             for index,row in enumerate(bar):
@@ -506,7 +510,7 @@ def resolve_external(db, manifest, name, entry, config):
                 if identity in wanted:
                     db.execute('UPDATE docs SET text=?,text_hash=? WHERE id=? AND text IS NULL',(text,digest(text),identity))
                 if index%10000==0: db.commit()
-        except (ValueError,EOFError,OSError) as error:
+        except Exception as error:
             errors.append(f'{path.name} 正文未完整：{error}')
         if path.stat().st_size != initial_size:
             errors.append(f'{path.name} 正文仍在上传，本次为部分结果')
