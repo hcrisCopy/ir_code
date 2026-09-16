@@ -11,7 +11,7 @@ A 数据准备    下载 / 申请 / 解压            check_data.py + extract_da
 B 使用配置    configs/manifest.json        人工维护，脚本只读
 C 查看样本    inspect_data.py              打印一条真实数据，确认样本单位
 D 指标统计    count_basic.py（第 1-4 项） + count_lengths.py（第 5-7 项）
-E 汇总核验    merge_results.py             ../ir_data/outputs/*.csv
+E 汇总核验    merge_results.py             ../ir_data/outputs/final_stats.json
 F 结果交付    回填 record.xlsx
 ```
 
@@ -655,17 +655,20 @@ git pull --ff-only
 
 | 文件 | 内容 |
 |---|---|
+| `final_stats.json` | **主汇总，给老师看这个**。按数据集 → 论文方法/设定 → split/子集组织，七项指标同级保存；token、word 各含四个分位数。数字、声明、参考值和缺项原因分开说明 |
 | `inventory.csv` | 所有目录的缺失、分片数量、大小与残片检查 |
 | `experiments/*.json` | 每个 config/子集完整结果、状态、样本预览和统计指纹 |
 | `experiment_stats.csv` / `length_stats.csv` | 数量 / 长度明细，重跑按 config/子集更新 |
-| `final_stats.csv` | 全部七项指标及有效样本数、语言、覆盖率 |
+| `final_stats.csv` | 辅助表格导出，不能代替总 JSON 中的论文设定和口径说明 |
 | `by_record_row.csv` | 每个数值带 config/子集标签，便于回填工作簿 |
 | `issues.csv` | 未说明、标星、缺长度、部分统计和未就绪项 |
 | `run_status.json` | 自动流程当前已处理的配置及结果状态 |
 | `cache/*.sqlite` | 磁盘候选、正文、跨配置长度缓存 |
 | `debug/` | limit 调试结果，不覆盖正式汇总 |
 
-回填前核对 `issues.csv`；partial、debug、公开全集参考结果不能当论文精确统计。脚本不自动修改 `record.xlsx`。
+`configs/manifest.json` 继续维护原始设定，脚本不改它；`final_stats.json` 合并设定和服务器实测结果。每篇论文单列处理方式，未轮到的配置也保留，解释为何没有数字。数据集自身不规定 N→K、对齐语料没有 query、数学解题没有候选池，分别写清楚原因。
+
+每个配置完成后自动更新总 JSON；也可运行 `python scripts/merge_results.py --preview 0` 仅重新整理，不重跑 token。全语料候选池和参考长度标 `*`；正文不全或论文抽样名单未公开时，不能当论文精确统计。脚本不自动修改 `record.xlsx`。
 
 服务器边界验证（不读取真实数据集）：
 

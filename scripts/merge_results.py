@@ -4,6 +4,7 @@ import csv
 import json
 from _common import OUTPUTS_DIR, load_manifest, banner
 from stage2 import csv_update, configurations
+from summarize_results import write_summary
 
 STATUS = {'unknown':'未说明','na':'不适用','estimate':'*'}
 def marked(value,status):
@@ -52,7 +53,9 @@ def build(manifest):
 
 def main():
     parser=argparse.ArgumentParser(); parser.add_argument('--preview',type=int,default=8); args=parser.parse_args()
-    manifest=load_manifest(); final,issues=build(manifest)
+    manifest=load_manifest()
+    write_summary(manifest)
+    final,issues=build(manifest)
     if not final: print('先运行 count_basic.py'); return 2
     def write(name,rows):
         path=OUTPUTS_DIR/name; fields=list(dict.fromkeys(k for row in rows for k in row)) or ['数据集','config','字段','值','原因']
@@ -72,6 +75,7 @@ def main():
     write('by_record_row.csv',list(grouped.values()))
     banner('汇总')
     for r in final[:args.preview]: print(r['config'],r['子集'],r['query数量'],r['候选池数量'],r['token平均值'],r['长度状态'])
+    print('主汇总 ../ir_data/outputs/final_stats.json；CSV 仅作导出')
     print('明细',len(final),'条；问题',len(issues),'条；输出 ../ir_data/outputs/')
     return 0
 if __name__=='__main__': raise SystemExit(main())

@@ -1,0 +1,70 @@
+"""在服务器验证交付结构和口径，避免表格丢掉论文设定。"""
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+import stage2
+import summarize_results as summary
+
+
+class SummaryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory()
+        self.root=Path(self.temp.name)
+        self.patch=patch.object(summary,'OUTPUTS_DIR',self.root/'outputs');self.patch.start()
+        self.config={'config_id':'test','papers':['Method A','Method B'],'paper_role':'method',
+                     'split':'test','sample_unit':'document','query':{'count':43,'count_status':'declared'},
+                     'n_to_k':{'n':100,'k':100,'text':'100 -> 100','status':'declared'},
+                     'sample_source':{'kind':'jsonl','file':'missing.jsonl'},'pool_scope':'full_corpus'}
+        self.entry={'path':str(self.root),'display_name':'test','configs':[self.config]}
+        self.manifest={'datasets':{'test':self.entry},'globals':{}}
+    def tearDown(self):
+        self.patch.stop();self.temp.cleanup()
+    def test_one_entry_per_paper_and_all_seven_metrics(self):
+        result=summary.build_summary(self.manifest)
+        configs=result['datasets']['test']['configs']
+        self.assertEqual([c['paper'] for c in configs],['Method A','Method B'])
+        row=configs[0]['results'][0]
+        self.assertEqual(row['query数量']['value'],43)
+        self.assertEqual(row['query数量']['status'],'declared')
+        self.assertIsNone(row['query数量']['observed'])
+        self.assertEqual(row['要求样本多少出多少']['n'],100)
+        self.assertEqual(set(row['每个样本平均token']) & {'P25','P50','P75','P90'}, {'P25','P50','P75','P90'})
+        self.assertIn('每个query平均正样本数量',row)
+    def test_actual_and_declared_and_starred_reference_are_distinct(self):
+        p=self.root/'outputs/experiments';p.mkdir(parents=True)
+        sig=stage2.fingerprint(self.entry,self.config)
+        b={'fingerprint':sig,'status':'complete','query_count':42,'query_count_status':'measured',
+           'pool_size':1000,'pool_status':'estimate','pool_scope':'full_corpus'}
+        l={'fingerprint':sig,'status':'complete','token_mean':23,'token_p25':10,'token_p50':20,
+           'token_p75':30,'token_p90':40,'token_samples':1000}
+        (p/'test.json').write_text(json.dumps(b));(p/'test_lengths.json').write_text(json.dumps(l))
+        row=summary.result_for('test',self.entry,self.config)
+        self.assertEqual(row['query数量']['value'],42)
+        self.assertEqual(row['query数量']['paper_reported'],43)
+        self.assertEqual(row['候选池数量']['display'],'1000*')
+        self.assertEqual(row['每个样本平均token']['display'],'23*')
+        self.assertTrue(row['每个样本平均token']['reference_only'])
+    def test_no_bare_not_applicable_for_auxiliary_tasks(self):
+        self.config['query']={'count':30,'count_status':'declared'}
+        self.config['n_to_k']={'status':'na','text':'不适用'}
+        self.config['candidate']={'pool_status':'na'}
+        self.config['qrels']={'status':'na'}
+        row=summary.result_for('auxiliary_math',self.entry,self.config)
+        for key in ('要求样本多少出多少','候选池数量','每个query平均正样本数量'):
+            self.assertIn('数学解题',row[key]['display'])
+            self.assertNotEqual(row[key]['display'],'不适用')
+    def test_fullrank_paper_settings_split_without_claiming_public_subset(self):
+        self.config['config_id']='fullrank-train-1k'
+        self.config['papers']=['FullRank'];self.config['usage_scope']='unknown_subset'
+        self.manifest['datasets']={'fullrank_training_data':self.entry}
+        rows=summary.build_summary(self.manifest)['datasets']['fullrank_training_data']['configs']
+        self.assertEqual([c['实验设定']['样本多少出多少']['n'] for c in rows],[20,100])
+        self.assertTrue(all(c['results'][0]['数量状态']=='pending' for c in rows))
+
+
+if __name__=='__main__':unittest.main()
