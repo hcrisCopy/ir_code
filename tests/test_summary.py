@@ -65,6 +65,13 @@ class SummaryTests(unittest.TestCase):
         rows=summary.build_summary(self.manifest)['datasets']['fullrank_training_data']['configs']
         self.assertEqual([c['实验设定']['样本多少出多少']['n'] for c in rows],[20,100])
         self.assertTrue(all(c['results'][0]['数量状态']=='pending' for c in rows))
+    def test_pending_upload_is_explained_without_running_statistics(self):
+        (self.root/'data.jsonl').write_text('partial')
+        self.entry['files']=[{'path':'data.jsonl','bytes':100}]
+        self.config['sample_source']={'kind':'jsonl','file':'data.jsonl'}
+        row=summary.result_for('test',self.entry,self.config)
+        self.assertIn('等待上传完整',row['未完成原因'])
+        self.assertIsNone(row['每个样本平均token']['value'])
 
 
 if __name__=='__main__':unittest.main()

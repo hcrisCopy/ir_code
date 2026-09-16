@@ -4,7 +4,7 @@ import csv
 import json
 import time
 
-from _common import OUTPUTS_DIR
+from _common import OUTPUTS_DIR, dataset_path, expand_files
 from stage2 import configurations, fingerprint, stem, write_json
 
 
@@ -33,6 +33,26 @@ def ranking_setting(name, config):
     if spec.get('n') is None and spec.get('k') is None:
         explanation += '；不能把多个设置合成一个数值'
     return metric(text, spec.get('status','unknown'), explanation, n=spec.get('n'), k=spec.get('k'))
+
+
+def pending_reason(entry, config):
+    spec=config.get('sample_source') or {}
+    if config.get('usage_scope')=='unknown_subset' or spec.get('kind')=='derived':
+        detail='；'.join(x for x in (config.get('note'),spec.get('note'),
+                                    (config.get('query') or {}).get('note')) if x)
+        return (detail+'；' if detail else '')+'该论文实际抽样或派生版本未取得，不能用公开全集替代'
+    if spec.get('kind')=='external':
+        return '尚未取得该论文检索器生成的候选 run；只有基础语料不能确定论文实际候选'
+    pattern=spec.get('file')
+    if pattern:
+        base=dataset_path(entry);files=expand_files(pattern,base)
+        if not files: return '服务器缺样本输入文件：'+pattern+'；等待上传或取得文件'
+        for path in files:
+            expected=next((d['bytes'] for d in entry.get('files',[]) if 'bytes' in d and
+                           path in expand_files(d['path'],base)),None)
+            if expected is not None and path.stat().st_size!=expected:
+                return f'服务器 {path.name} 目前 {path.stat().st_size} 字节，完整文件应为 {expected} 字节；等待上传完整后统计'
+    return '该配置尚未完成服务器统计'
 
 
 def length_metric(prefix, config, basic, length, reason):
@@ -68,7 +88,7 @@ def result_for(name, entry, config):
     if l.get('fingerprint')!=b.get('fingerprint'): l={}
     declared=config.get('query') or {}
     context=task_context(name,config)
-    unavailable=b.get('notes') or ('输入文件或配置已变化，需要重跑后更新统计' if stale else '该配置尚未完成服务器统计')
+    unavailable=b.get('notes') or ('输入文件或配置已变化，需要重跑后更新统计' if stale else pending_reason(entry,config))
     q=b.get('query_count')
     qs=b.get('query_count_status','unknown')
     if q is None and declared.get('count') is not None:
@@ -83,6 +103,9 @@ def result_for(name, entry, config):
         query=metric(q,qs,explanation,paper_reported=declared.get('count'),
                      observed=b.get('query_count') if qs in ('measured','estimate') else None,
                      query_identity=b.get('query_identity'),data_records=b.get('training_record_count'))
+        if name=='auxiliary_math':
+            query['display']=str(q)+' 道题（题目数量，不是检索 query）' if q is not None else unavailable
+            query['explanation']='这是数学解题评测，记录题目数量作为辅助规模参考；没有检索 query'
     candidate=config.get('candidate') or {}
     pool=b.get('pool_size')
     ps=b.get('pool_status','unknown')
