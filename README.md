@@ -25,17 +25,40 @@
 
 以下命令按 Linux/bash 编写。
 
+### 0.1 创建 Conda 环境
+
+环境统一命名为 `ir_stats`，使用 Python 3.11：
+
+```bash
+conda create -n ir_stats python=3.11 -y
+conda activate ir_stats
+
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+
+conda install -c conda-forge -y git git-lfs wget jq unzip
+git lfs install
+```
+
+这里暂不安装 GPU 版 PyTorch。第二阶段只使用 Qwen3-1.7B 的 tokenizer 统计 token 数，不需要加载模型权重；如果后面要运行模型，再按服务器 CUDA 版本单独安装 PyTorch。
+
+每次执行下载或统计代码前先运行：
+
+```bash
+conda activate ir_stats
+```
+
+### 0.2 创建数据目录并设置缓存
+
 ```bash
 mkdir -p ../ir_data/{_cache,hf,beir,r2med,medical}
 
 export HF_HOME=../ir_data/_cache/huggingface
 export HF_DATASETS_CACHE=../ir_data/_cache/huggingface/datasets
 export IR_DATASETS_HOME=../ir_data/_cache/ir_datasets
-
-python -m pip install -U huggingface_hub datasets ir_datasets mteb gdown
 ```
 
-服务器还需要 `git`、`git-lfs`、`wget`、`tar`、`unzip` 和 `jq`。Hugging Face 数据均为公开仓库，一般不用登录；出现限流时再执行 `hf auth login`。
+`tar` 通常由 Linux 系统自带。Hugging Face 数据均为公开仓库，一般不用登录；出现限流时再执行 `hf auth login`。
 
 ## 1. 可直接下载的数据
 

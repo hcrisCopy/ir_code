@@ -1,0 +1,19 @@
+# 数据集下载与读取
+huggingface_hub
+datasets
+ir_datasets
+mteb
+gdown
+
+# Qwen3 tokenizer 与长度统计
+transformers
+tokenizers
+sentencepiece
+
+# 数据处理与统计
+numpy
+pandas
+pyarrow
+duckdb
+jieba
+tqdm
