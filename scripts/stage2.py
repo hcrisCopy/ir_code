@@ -97,7 +97,13 @@ def paths_for(entry, config):
 
 def fingerprint(entry, config):
     signatures = [(to_display(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths_for(entry, config)]
-    return hashlib.sha256(json.dumps([ENGINE_VERSION, entry.get('language'), config, signatures],
+    statistical_config=copy.deepcopy(config)
+    legacy=statistical_config.pop('statistics_metadata_before_ranking_audit',None)
+    if legacy is not None:
+        # N/M 的证据与展示修正不改变候选、query、正例或原文长度。
+        # 保持既有缓存指纹，避免把服务器已完成的编码作废。
+        statistical_config['n_to_k']=legacy
+    return hashlib.sha256(json.dumps([ENGINE_VERSION, entry.get('language'), statistical_config, signatures],
                                     sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

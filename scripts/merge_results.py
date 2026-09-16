@@ -4,7 +4,7 @@ import csv
 import json
 from _common import OUTPUTS_DIR, load_manifest, banner
 from stage2 import csv_update, configurations
-from summarize_results import write_summary
+from summarize_results import write_summary, ranking_setting
 
 STATUS = {'unknown':'未说明','na':'不适用','estimate':'*'}
 def marked(value,status):
@@ -25,7 +25,7 @@ def build(manifest):
              '子集':b.get('subsets',''),'论文':b['papers'],'split':b['split'],'样本单位':b['sample_unit'],
              'query数量':marked(b.get('query_count'),b.get('query_count_status')),
              '论文报告query数量':b.get('paper_reported_query_count'),'训练或数据记录数':b.get('training_record_count'),
-             '样本多少出多少':b.get('n_to_k'),'候选池数量':marked(b.get('pool_size'),b.get('pool_status')),
+             '样本多少出多少':ranking_setting(name,config)['display'],'候选池数量':marked(b.get('pool_size'),b.get('pool_status')),
              '候选池口径':b.get('pool_scope'),'平均正样本数':marked(b.get('positives_per_query'),b.get('positives_status')),
              '正样本口径':b.get('positives_scope'),'数量状态':b.get('status'),'长度状态':l.get('status','未统计'),
              '样本总数_去重':l.get('samples_dedup'),'token有效样本数':l.get('token_samples'),

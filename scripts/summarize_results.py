@@ -24,15 +24,18 @@ def task_context(name, config):
     return '这是数据集发布方的检索基准，发布语料、query 和相关性标注，没有统一规定某个重排模型的输入输出数量'
 
 
-def ranking_setting(name, config):
-    spec=config.get('n_to_k') or {}
+def ranking_setting(name, config, paper=None):
+    spec=copy.deepcopy(config.get('n_to_k') or {})
+    if paper and paper in spec.get('per_paper',{}): spec.update(spec['per_paper'][paper])
     if spec.get('status') == 'na':
         return metric(None, 'na', task_context(name,config)+'；因此没有固定的 N→K', n=None,k=None)
     text=spec.get('text') or '论文未说明输入候选数量和输出数量'
-    explanation=spec.get('note') or '这是该论文的候选重排设定；N→N 表示对全部 N 个候选排序'
+    explanation=spec.get('note') or '输入候选数量与要求输出数量分别核实，不默认相等'
     if spec.get('n') is None and spec.get('k') is None:
         explanation += '；不能把多个设置合成一个数值'
-    return metric(text, spec.get('status','unknown'), explanation, n=spec.get('n'), k=spec.get('k'))
+    extra={key:copy.deepcopy(spec.get(key)) for key in ('input_status','output_status','output_type',
+             'output_evidence','final_keep','single_call','preparation')}
+    return metric(text, spec.get('status','unknown'), explanation, n=spec.get('n'), k=spec.get('k'), **extra)
 
 
 def pending_reason(entry, config):
@@ -78,7 +81,7 @@ def length_metric(prefix, config, basic, length, reason):
                     **{'P'+str(p):length.get(prefix+'_p'+str(p)+'_multi') for p in (25,50,75,90)}))
 
 
-def result_for(name, entry, config):
+def result_for(name, entry, config, paper=None):
     basepath=OUTPUTS_DIR/'experiments'/(stem(config)+'.json')
     lengthpath=OUTPUTS_DIR/'experiments'/(stem(config)+'_lengths.json')
     b=json.loads(basepath.read_text(encoding='utf-8')) if basepath.exists() else {}
@@ -148,7 +151,7 @@ def result_for(name, entry, config):
     return {'subset':config.get('_subset'), '统计范围':scope_text,
             '数量状态':b.get('status','pending'), '长度状态':l.get('status','pending'),
             '未完成原因':unavailable if b.get('status')!='complete' else (length_reason if l.get('status')!='complete' else None),
-            'query数量':query,'要求样本多少出多少':ranking_setting(name,config),
+            'query数量':query,'要求样本多少出多少':ranking_setting(name,config,paper),
             '候选池数量':poolmetric,'每个query平均正样本数量':positives,
             '每个样本平均token':length_metric('token',config,b,l,length_reason),
             '每个样本平均word':length_metric('word',config,b,l,length_reason),
@@ -165,8 +168,10 @@ def paper_notes(name, paper, config):
     notes=[config.get('note'),(config.get('n_to_k') or {}).get('note'),
            (config.get('sample_source') or {}).get('note')]
     if name=='beir':
-        if any(x in paper for x in ('Compress-then-Rank','PE-Rank','FullRank')):
+        if any(x in paper for x in ('Compress-then-Rank','PE-Rank')):
             notes.append('该论文采用 window 20 / step 10；这是内部排序窗口，整个 query 的输入输出数量另见 N→K')
+        if 'FullRank' in paper:
+            notes.append('RankMistral20 的滑窗与 RankMistral100 的完整排序须分别理解；不能把所有 FullRank 版本统一当成一次输入 20 个')
         if 'REARANK' in paper: notes.append('该论文采用 window 20、10 次迭代；整个 query 的输入输出数量另见 N→K')
     # 共用配置原始备注可能混合多篇论文；只展示本论文可确认的设置。
     return [n for n in notes if n and not (name=='beir' and
@@ -194,12 +199,12 @@ def build_summary(manifest):
                                       'question':'一道数学题（辅助评测）','varies':'随具体 task 变化，须逐 task 统计'}.get(original.get('sample_unit'),'按论文定义的候选输入单位'),
                     'usage_scope':original.get('usage_scope','paper_setting'),
                     '处理方式说明':paper_notes(name,paper,original),
-                    '实验设定':{'样本多少出多少':ranking_setting(name,original),
+                    '实验设定':{'样本多少出多少':ranking_setting(name,original,paper),
                                '候选来源':(original.get('candidate') or {}).get('source') or task_context(name,original),
                                'query设置':copy.deepcopy(original.get('query') or {}),
                                '相关性标注设置':copy.deepcopy(original.get('qrels') or {}),
                                '样本文件与解析方式':copy.deepcopy(original.get('sample_source') or {})},
-                    'results':[result_for(name,entry,c) for c in variants]}
+                    'results':[result_for(name,entry,c,paper) for c in variants]}
                 if name=='fullrank_training_data' and original['config_id']=='fullrank-train-1k':
                     # 原定义将 RankMistral20/100 放在一个 text 中。给老师分别列出，
                     # 不把公开 top100 文件冒充缺失的 top20/其他教师版本。
@@ -208,7 +213,10 @@ def build_summary(manifest):
                         variant['source_config_id']=original['config_id']
                         variant['config_id']=original['config_id']+'-rankmistral'+str(n)
                         variant['设定名称']='RankMistral'+str(n)+'（论文设定，具体教师版本须进一步核实）'
-                        setting=metric(f'{n} -> {n}','declared',f'论文的 RankMistral{n} 全排序设置；公开 top100 文件只代表文件名对应的一个教师版本',n=n,k=n)
+                        setting=ranking_setting(name,original,paper)
+                        setting.update(value=f'{n} -> {n}',display=f'输入 {n} 个候选，输出 {n} 个候选的完整排序；最终保留数量未确认',
+                            n=n,k=n,status='declared',input_status='declared',output_status='verified',
+                            single_call={'input_candidates':n,'output_candidates':n,'output_type':'完整排序'})
                         variant['实验设定']['样本多少出多少']=setting
                         for result in variant['results']: result['要求样本多少出多少']=copy.deepcopy(setting)
                         configs.append(variant)

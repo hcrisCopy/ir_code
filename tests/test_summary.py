@@ -1,5 +1,6 @@
 """在服务器验证交付结构和口径，避免表格丢掉论文设定。"""
 import json
+import copy
 import sys
 import tempfile
 import unittest
@@ -72,6 +73,28 @@ class SummaryTests(unittest.TestCase):
         row=summary.result_for('test',self.entry,self.config)
         self.assertIn('等待上传完整',row['未完成原因'])
         self.assertIsNone(row['每个样本平均token']['value'])
+    def test_ranking_audit_preserves_statistical_fingerprint(self):
+        before=stage2.fingerprint(self.entry,self.config)
+        audited=copy.deepcopy(self.config)
+        audited['statistics_metadata_before_ranking_audit']=copy.deepcopy(audited['n_to_k'])
+        audited['n_to_k']={'n':100,'k':None,'status':'unknown','text':'输入100个，输出待核实'}
+        self.assertEqual(before,stage2.fingerprint(self.entry,audited))
+    def test_unknown_output_never_becomes_n_by_default(self):
+        self.config['n_to_k']={'n':200,'k':None,'status':'unknown','text':'输入200个，输出数量待核实',
+                               'output_status':'unknown','final_keep':{'value':None,'status':'unknown'}}
+        setting=summary.ranking_setting('test',self.config)
+        self.assertEqual(setting['n'],200)
+        self.assertIsNone(setting['k'])
+        self.assertEqual(setting['output_status'],'unknown')
+        self.assertIsNone(setting['final_keep']['value'])
+    def test_paper_specific_output_and_single_call_do_not_mix(self):
+        self.config['n_to_k']={'n':100,'k':None,'status':'unknown','per_paper':{
+            'Method A':{'n':100,'k':10,'status':'declared','text':'100 -> 10'},
+            'Method B':{'n':100,'k':100,'status':'declared','text':'100 -> 100',
+                         'single_call':{'input_candidates':20,'output_candidates':20}}}}
+        configs=summary.build_summary(self.manifest)['datasets']['test']['configs']
+        self.assertEqual([c['results'][0]['要求样本多少出多少']['k'] for c in configs],[10,100])
+        self.assertEqual(configs[1]['results'][0]['要求样本多少出多少']['single_call']['input_candidates'],20)
 
 
 if __name__=='__main__':unittest.main()

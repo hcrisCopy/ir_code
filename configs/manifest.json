@@ -6,7 +6,8 @@
     "无 doc ID 时以正文 SHA256 去重统计长度；正文并集不能冒充文档 ID 并集，池数量标星。",
     "usage_scope=unknown_subset 时只保留论文声明，禁止用公开全集代替；public_release 是单独的公开版本参考统计。",
     "pool_status 表示相对目标候选并集的可靠性；整库即使实测也标 estimate。",
-    "record_type / record_name 显式绑定回填行；医学数据可有 dataset 与 method 两类用途。"
+    "record_type / record_name 显式绑定回填行；医学数据可有 dataset 与 method 两类用途。",
+    "n_to_k 的 N/M 分别记录候选输入与输出依据，final_keep 是最终保留数，single_call 是单次调用；不同论文用 per_paper 分开。statistics_metadata_before_ranking_audit 仅用于旧缓存兼容，不是有效的实验设定。"
   ],
   "globals": {
     "tokenizer": {
@@ -127,11 +128,31 @@
             "note": "随机抽样，未公布 qid"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
             "k": 100,
             "status": "declared",
-            "note": "单次全排序"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://staff.fnwi.uva.nl/m.derijke/wp-content/papercite-data/pdf/zhou-2026-longranker.pdf",
+                "section": "摘要与方法：一次生成全部候选文档的排序置换",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 100,
+              "output_candidates": 100,
+              "output_type": "完整排序"
+            },
+            "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。摘要与方法：一次生成全部候选文档的排序置换"
           },
           "candidate": {
             "source": "未说明",
@@ -148,7 +169,14 @@
           },
           "record_type": "训练集",
           "record_name": "MS MARCO Passage Ranking",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "单次全排序"
+          }
         }
       ]
     },
@@ -209,11 +237,31 @@
             "note": "与 TREC DL Document 测试集共用"
           },
           "n_to_k": {
-            "text": "50 -> 50",
             "n": 50,
             "k": 50,
             "status": "declared",
-            "note": "SPLADE-v3 top 50"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.26483",
+                "section": "§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 50,
+              "output_candidates": 50,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 50 个候选，输出 50 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50"
           },
           "candidate": {
             "source": "SPLADE-v3 top 50",
@@ -230,7 +278,14 @@
           },
           "record_type": "测试集",
           "record_name": "MS MARCO Document v1",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
+          }
         }
       ]
     },
@@ -291,7 +346,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -308,7 +369,13 @@
           },
           "record_type": "训练集",
           "record_name": "KILT Wikipedia Passages",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -372,10 +439,81 @@
             "note": "论文声明过滤后 232,419 条；实测行数由脚本统计"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
-            "k": 20,
-            "status": "declared"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 20 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "PE-Rank (WWW 2025)": {
+                "n": 20,
+                "k": 20,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2406.14848",
+                    "section": "§3.2 动态受限解码与 §4.1 训练设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 动态受限解码与 §4.1 训练设置"
+              },
+              "Compress-then-Rank (AAAI 2026)": {
+                "n": 20,
+                "k": 20,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://ojs.aaai.org/index.php/AAAI/article/view/40811",
+                    "section": "Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10"
+              }
+            }
           },
           "candidate": {
             "source": "Jina-Embeddings top 20",
@@ -392,7 +530,13 @@
           },
           "record_type": "训练集",
           "record_name": "PE-Rank 训练集",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         },
         {
           "config_id": "resrank-stage1-232419",
@@ -412,10 +556,31 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
             "k": 20,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.22180",
+                "section": "§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 20 个候选，输出 20 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序"
           },
           "candidate": {
             "source": "PE-Rank 原始候选",
@@ -431,7 +596,13 @@
           },
           "record_type": "训练集",
           "record_name": "PE-Rank 训练集",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         },
         {
           "config_id": "perank-alignment-wiki2m",
@@ -457,7 +628,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -474,7 +651,13 @@
           "record_type": "训练集",
           "record_name": "PE-Rank 训练集",
           "pool_scope": "author_pool",
-          "note": "alignment 语料，无 query；样本长度按公开 wiki2m 统计"
+          "note": "alignment 语料，无 query；样本长度按公开 wiki2m 统计",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -529,10 +712,31 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
             "k": 20,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://ojs.aaai.org/index.php/AAAI/article/view/40811",
+                "section": "Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "output_type": "完整排序"
+            },
+            "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10"
           },
           "candidate": {
             "source": "MS MARCO 派生",
@@ -549,7 +753,13 @@
           "record_type": "训练集",
           "record_name": "RankZephyr 训练集",
           "pool_scope": "candidate_union",
-          "usage_scope": "unknown_subset"
+          "usage_scope": "unknown_subset",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         },
         {
           "config_id": "e2rank-stage2-msmarco-40k",
@@ -572,10 +782,32 @@
             "note": "论文只给 40K，未说明具体取法"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
             "k": 20,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2510.22733",
+                "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": null,
+              "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+              "note": "不能把一个 embedding 写成输出 1 个候选，也不能把 0 个生成 token 写成输出 0 个候选"
+            },
+            "text": "输入 20 个候选，输出 20 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
           },
           "candidate": {
             "source": "MS MARCO 派生",
@@ -591,7 +823,13 @@
           "record_type": "训练集",
           "record_name": "RankZephyr 训练集",
           "pool_scope": "candidate_union",
-          "usage_scope": "unknown_subset"
+          "usage_scope": "unknown_subset",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         },
         {
           "config_id": "rankzephyr-public-all",
@@ -613,10 +851,25 @@
             "count_status": "measured"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
-            "k": 20,
-            "status": "declared"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 20 个候选，输出数量待核实",
+            "note": "公开文件的候选编号解析尚未全部通过；不将预计 20 个候选的格式直接当成所有记录均输出 20 个的实测证据",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "MS MARCO 派生",
@@ -634,7 +887,13 @@
           "record_name": "RankZephyr 训练集",
           "pool_scope": "candidate_union",
           "usage_scope": "public_release",
-          "note": "RankZephyr 公开全集参考；C2R 9,978 条的选择名单未核实，不拿全集当子集"
+          "note": "RankZephyr 公开全集参考；C2R 9,978 条的选择名单未核实，不拿全集当子集",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         }
       ]
     },
@@ -702,10 +961,25 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "未说明",
             "n": null,
             "k": null,
-            "status": "unknown"
+            "status": "unknown",
+            "input_status": "unknown",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入和输出数量须按具体设置核实",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "混合",
@@ -720,7 +994,13 @@
           },
           "record_type": "训练集",
           "record_name": "Echo E5 训练集",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "未说明",
+            "n": null,
+            "k": null,
+            "status": "unknown"
+          }
         }
       ]
     },
@@ -792,10 +1072,32 @@
             "note": "论文 157,320；公开版 156,223，以实测为准"
           },
           "n_to_k": {
-            "text": "16 -> 16",
             "n": 16,
             "k": 16,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2510.22733",
+                "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 16,
+              "output_candidates": null,
+              "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+              "note": "不能把一个 embedding 写成输出 1 个候选，也不能把 0 个生成 token 写成输出 0 个候选"
+            },
+            "text": "输入 16 个候选，输出 16 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
           },
           "candidate": {
             "source": "混合（HotpotQA、MIRACL、MS MARCO、NQ、TriviaQA、DuReader、T2Ranking、cMedQAv2、mMARCO-Chinese）",
@@ -814,7 +1116,13 @@
           "pool_scope": "candidate_union",
           "positive_index_field": "pos_index",
           "positives_scope": "designated_positive",
-          "note": "公开 train 版本；pos_index 为从 1 开始的指定正例位置，不以 ranking 第一名推断相关性"
+          "note": "公开 train 版本；pos_index 为从 1 开始的指定正例位置，不以 ranking 第一名推断相关性",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "16 -> 16",
+            "n": 16,
+            "k": 16,
+            "status": "declared"
+          }
         },
         {
           "config_id": "resrank-stage2-87k",
@@ -835,11 +1143,31 @@
             "note": "87K 是 ResRank 选用规模，不等于 E2Rank 本文规模"
           },
           "n_to_k": {
-            "text": "16 -> 16（输出 16 个分数）",
             "n": 16,
             "k": 16,
             "status": "declared",
-            "note": "1 正 + 15 负；query 不计入候选"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.22180",
+                "section": "§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 16,
+              "output_candidates": 16,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 16 个候选，输出 16 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序"
           },
           "candidate": {
             "source": "E2Rank 派生",
@@ -854,7 +1182,14 @@
           },
           "record_type": "训练集",
           "record_name": "E2Rank Ranking Datasets",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "16 -> 16（输出 16 个分数）",
+            "n": 16,
+            "k": 16,
+            "status": "declared",
+            "note": "1 正 + 15 负；query 不计入候选"
+          }
         },
         {
           "config_id": "rrk-e2rank-150k",
@@ -874,10 +1209,31 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "16 -> 16",
             "n": 16,
             "k": 16,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.26483",
+                "section": "§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 16,
+              "output_candidates": 16,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 16 个候选，输出 16 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50"
           },
           "candidate": {
             "source": "E2Rank 派生",
@@ -892,7 +1248,13 @@
           },
           "record_type": "训练集",
           "record_name": "E2Rank Ranking Datasets",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "16 -> 16",
+            "n": 16,
+            "k": 16,
+            "status": "declared"
+          }
         }
       ]
     },
@@ -958,7 +1320,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -973,7 +1341,13 @@
           },
           "record_type": "训练集",
           "record_name": "Atlas Wikipedia 2020-12",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -1031,10 +1405,30 @@
             "note": "MS MARCO train 随机抽 1k，未公布 qid"
           },
           "n_to_k": {
-            "text": "20 -> 20（RankMistral20）/ 100 -> 100（RankMistral100）",
             "n": null,
             "k": null,
-            "status": "declared"
+            "status": "unknown",
+            "input_status": "unknown",
+            "output_status": "verified",
+            "output_type": "完整排序",
+            "text": "RankMistral20 与 RankMistral100 分别要求完整排序，不能合成一个 N/M",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [
+              {
+                "url": "https://aclanthology.org/2025.acl-long.8/",
+                "section": "完整排序定义、RankMistral20/100 与训练标签"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "BM25 top 20 或 top 100",
@@ -1053,7 +1447,13 @@
           "record_name": "FullRank 训练集",
           "pool_scope": "candidate_union",
           "usage_scope": "unknown_subset",
-          "note": "公开文件是 top100 的一个教师配置；不能自动代表 top20 或其他教师版本"
+          "note": "公开文件是 top100 的一个教师配置；不能自动代表 top20 或其他教师版本",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20（RankMistral20）/ 100 -> 100（RankMistral100）",
+            "n": null,
+            "k": null,
+            "status": "declared"
+          }
         },
         {
           "config_id": "fullrank-public-top100",
@@ -1076,10 +1476,31 @@
             "note": "MS MARCO train 随机抽 1k，未公布 qid"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
             "k": 100,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://aclanthology.org/2025.acl-long.8/",
+                "section": "完整排序定义、RankMistral20/100 与训练标签",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 100,
+              "output_candidates": 100,
+              "output_type": "完整排序"
+            },
+            "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。完整排序定义、RankMistral20/100 与训练标签"
           },
           "candidate": {
             "source": "BM25 top 20 或 top 100",
@@ -1098,7 +1519,13 @@
           "record_name": "FullRank 训练集",
           "pool_scope": "candidate_union",
           "usage_scope": "public_release",
-          "note": "本公开文件的 BM25 top100 候选并集；其他教师/top20 设置另行核对"
+          "note": "本公开文件的 BM25 top100 候选并集；其他教师/top20 设置另行核对",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared"
+          }
         }
       ]
     },
@@ -1168,11 +1595,36 @@
             "note": "选带 0-3 级 qrels 的 179 个 query"
           },
           "n_to_k": {
-            "text": "100 -> 20",
-            "n": 100,
+            "n": 20,
             "k": 20,
             "status": "declared",
-            "note": "从 BM25 top 100 抽 20 篇"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://github.com/lezhang7/Rearank",
+                "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "output_type": "完整排序"
+            },
+            "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成",
+            "preparation": {
+              "retrieved_candidates": 100,
+              "sampled_model_inputs": 20,
+              "note": "100→20 是训练候选准备/抽样过程；模型对抽出的 20 个排序，不能把两个阶段混成模型输入输出"
+            }
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -1187,7 +1639,14 @@
           },
           "record_type": "训练集",
           "record_name": "MS MARCO v2 Passage",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 20",
+            "n": 100,
+            "k": 20,
+            "status": "declared",
+            "note": "从 BM25 top 100 抽 20 篇"
+          }
         }
       ]
     },
@@ -1249,11 +1708,31 @@
             "note": "论文为 179 个 query x 每 query 50 次抽样；公开版 12,603 行，实测不同 qid 为 177"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
             "k": 20,
             "status": "declared",
-            "note": "179 queries x 每 query 50 次抽样"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://github.com/lezhang7/Rearank",
+                "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "output_type": "完整排序"
+            },
+            "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成"
           },
           "candidate": {
             "source": "BM25 top 100（TREC-DL）",
@@ -1271,7 +1750,14 @@
           "record_type": "训练集",
           "record_name": "REARANK 12K",
           "pool_scope": "candidate_union",
-          "note": "公开 train 实测口径；与论文声明 query 数分别记录，增强行数另记"
+          "note": "公开 train 实测口径；与论文声明 query 数分别记录，增强行数另记",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared",
+            "note": "179 queries x 每 query 50 次抽样"
+          }
         }
       ]
     },
@@ -1345,10 +1831,31 @@
             "note": "论文 13,517；公开总集 13,549（SFT 6,778 + RL train 6,721 + RL validation 50）"
           },
           "n_to_k": {
-            "text": "20 -> 20",
             "n": 20,
             "k": 20,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://github.com/8421BCD/ReasonRank",
+                "section": "论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "output_type": "完整排序"
+            },
+            "text": "输入 20 个候选，输出 20 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置"
           },
           "candidate": {
             "source": "BM25 top 20",
@@ -1365,7 +1872,13 @@
           "record_type": "训练集",
           "record_name": "ReasonRank Data 13K",
           "pool_scope": "candidate_union",
-          "usage_scope": "unknown_subset"
+          "usage_scope": "unknown_subset",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         },
         {
           "config_id": "reasonrank-public-all",
@@ -1389,10 +1902,25 @@
             "note": "论文 13,517；公开总集 13,549（SFT 6,778 + RL train 6,721 + RL validation 50）"
           },
           "n_to_k": {
-            "text": "20 -> 20",
-            "n": 20,
-            "k": 20,
-            "status": "declared"
+            "n": null,
+            "k": null,
+            "status": "unknown",
+            "input_status": "unknown",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "公开混合训练文件的候选数须逐记录核实，输出完整排序的长度也须逐记录核实",
+            "note": "已遇到 18 个候选的记录，不能把公开总集统一写成 20→20；论文分阶段设定与公开混合文件分开",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "BM25 top 20",
@@ -1412,7 +1940,13 @@
           "usage_scope": "public_release",
           "positive_field": "relevant_docids",
           "positives_scope": "candidate_pool",
-          "note": "公开总集参考；含 SFT、RL train、RL validation，不能作为单一 train split 回填"
+          "note": "公开总集参考；含 SFT、RL train、RL validation，不能作为单一 train split 回填",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          }
         }
       ]
     },
@@ -1485,7 +2019,13 @@
             "n": null,
             "k": null,
             "status": "na",
-            "note": "数据集本身不含重排实验设置"
+            "note": "数据集本身不含重排实验设置",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -1502,7 +2042,14 @@
           },
           "record_type": "训练集",
           "record_name": "MIRIAD-4.4M",
-          "pool_scope": "na"
+          "pool_scope": "na",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集本身不含重排实验设置"
+          }
         }
       ]
     },
@@ -1579,7 +2126,13 @@
             "n": null,
             "k": null,
             "status": "na",
-            "note": "数据集按 pairwise 三元组提供，不是 listwise N->K"
+            "note": "数据集按 pairwise 三元组提供，不是 listwise N->K",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": "click log 派生",
@@ -1595,7 +2148,14 @@
           },
           "record_type": "训练集",
           "record_name": "TripClick",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集按 pairwise 三元组提供，不是 listwise N->K"
+          }
         },
         {
           "config_id": "tripclick-raw-test",
@@ -1618,11 +2178,25 @@
             "note": "HEAD / TORSO / TAIL 各 1,175 个，需分开统计"
           },
           "n_to_k": {
-            "text": "200 -> 200",
             "n": 200,
-            "k": 200,
-            "status": "declared",
-            "note": "官方 test 候选深度 200"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 200 个候选，输出数量待核实",
+            "note": "官方 test 提供深度 200 的 BM25 候选 run；这是检索候选深度，不是某个重排模型要求输出 200 个的证据",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "官方 BM25 run",
@@ -1639,7 +2213,14 @@
           },
           "record_type": "测试集",
           "record_name": "TripClick",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "200 -> 200",
+            "n": 200,
+            "k": 200,
+            "status": "declared",
+            "note": "官方 test 候选深度 200"
+          }
         }
       ]
     },
@@ -1730,7 +2311,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -1752,7 +2339,13 @@
           },
           "record_type": "训练集",
           "record_name": "NFCorpus",
-          "pool_scope": "full_corpus"
+          "pool_scope": "full_corpus",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         },
         {
           "config_id": "nfcorpus-test",
@@ -1779,7 +2372,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -1800,7 +2399,13 @@
           },
           "record_type": "测试集",
           "record_name": "NFCorpus",
-          "pool_scope": "full_corpus"
+          "pool_scope": "full_corpus",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -1882,7 +2487,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -1905,7 +2516,13 @@
           },
           "record_type": "测试集",
           "record_name": "TREC-COVID",
-          "pool_scope": "full_corpus"
+          "pool_scope": "full_corpus",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -1993,11 +2610,221 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
-            "k": 100,
-            "status": "declared",
-            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10；E2Rank 用 top 20 构造 prompt 再给 top 100 打分"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 100 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "LongRanker (WWW 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://staff.fnwi.uva.nl/m.derijke/wp-content/papercite-data/pdf/zhou-2026-longranker.pdf",
+                    "section": "摘要与方法：一次生成全部候选文档的排序置换",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。摘要与方法：一次生成全部候选文档的排序置换"
+              },
+              "Compress-then-Rank (AAAI 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://ojs.aaai.org/index.php/AAAI/article/view/40811",
+                    "section": "Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10"
+              },
+              "E2Rank (2025-10)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2510.22733",
+                    "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": null,
+                  "output_candidates": null,
+                  "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+                  "note": "不能把一个 embedding 写成输出 1 个候选，也不能把 0 个生成 token 写成输出 0 个候选"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
+              },
+              "ResRank (2026-04)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2604.22180",
+                    "section": "§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "相关性分数"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序"
+              },
+              "PE-Rank (WWW 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2406.14848",
+                    "section": "§3.2 动态受限解码与 §4.1 训练设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 动态受限解码与 §4.1 训练设置"
+              },
+              "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://aclanthology.org/2025.acl-long.8/",
+                    "section": "完整排序定义、RankMistral20/100 与训练标签",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。完整排序定义、RankMistral20/100 与训练标签"
+              },
+              "REARANK (EMNLP 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://github.com/lezhang7/Rearank",
+                    "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成"
+              }
+            }
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -2014,7 +2841,14 @@
           },
           "record_type": "测试集",
           "record_name": "TREC DL 2019 Passage Ranking",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10；E2Rank 用 top 20 构造 prompt 再给 top 100 打分"
+          }
         },
         {
           "config_id": "trec-dl19-passage-splade-v3-top50",
@@ -2034,11 +2868,31 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "50 -> 50",
             "n": 50,
             "k": 50,
             "status": "declared",
-            "note": "SPLADE-v3 top 50"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.26483",
+                "section": "§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 50,
+              "output_candidates": 50,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 50 个候选，输出 50 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50"
           },
           "candidate": {
             "source": "SPLADE-v3 top 50",
@@ -2053,7 +2907,14 @@
           },
           "record_type": "测试集",
           "record_name": "TREC DL 2019 Passage Ranking",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
+          }
         },
         {
           "config_id": "trec-dl20-passage-bm25-top100",
@@ -2079,11 +2940,221 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
-            "k": 100,
-            "status": "declared",
-            "note": "窗口设置同 2019"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 100 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "LongRanker (WWW 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://staff.fnwi.uva.nl/m.derijke/wp-content/papercite-data/pdf/zhou-2026-longranker.pdf",
+                    "section": "摘要与方法：一次生成全部候选文档的排序置换",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。摘要与方法：一次生成全部候选文档的排序置换"
+              },
+              "Compress-then-Rank (AAAI 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://ojs.aaai.org/index.php/AAAI/article/view/40811",
+                    "section": "Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10"
+              },
+              "E2Rank (2025-10)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2510.22733",
+                    "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": null,
+                  "output_candidates": null,
+                  "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+                  "note": "不能把一个 embedding 写成输出 1 个候选，也不能把 0 个生成 token 写成输出 0 个候选"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
+              },
+              "ResRank (2026-04)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2604.22180",
+                    "section": "§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "相关性分数"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序"
+              },
+              "PE-Rank (WWW 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2406.14848",
+                    "section": "§3.2 动态受限解码与 §4.1 训练设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 动态受限解码与 §4.1 训练设置"
+              },
+              "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://aclanthology.org/2025.acl-long.8/",
+                    "section": "完整排序定义、RankMistral20/100 与训练标签",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。完整排序定义、RankMistral20/100 与训练标签"
+              },
+              "REARANK (EMNLP 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://github.com/lezhang7/Rearank",
+                    "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成"
+              }
+            }
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -2099,7 +3170,14 @@
           },
           "record_type": "测试集",
           "record_name": "TREC DL 2020 Passage Ranking",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "窗口设置同 2019"
+          }
         },
         {
           "config_id": "trec-dl20-passage-splade-v3-top50",
@@ -2119,10 +3197,31 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "50 -> 50",
             "n": 50,
             "k": 50,
-            "status": "declared"
+            "status": "declared",
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.26483",
+                "section": "§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 50,
+              "output_candidates": 50,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 50 个候选，输出 50 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50"
           },
           "candidate": {
             "source": "SPLADE-v3 top 50",
@@ -2137,7 +3236,13 @@
           },
           "record_type": "测试集",
           "record_name": "TREC DL 2020 Passage Ranking",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared"
+          }
         }
       ]
     },
@@ -2234,11 +3339,194 @@
             "note": "每个子集分别统计，不合并成一个 query 数"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
-            "k": 100,
-            "status": "declared",
-            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 100 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "LongRanker (WWW 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://staff.fnwi.uva.nl/m.derijke/wp-content/papercite-data/pdf/zhou-2026-longranker.pdf",
+                    "section": "摘要与方法：一次生成全部候选文档的排序置换",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。摘要与方法：一次生成全部候选文档的排序置换"
+              },
+              "Compress-then-Rank (AAAI 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://ojs.aaai.org/index.php/AAAI/article/view/40811",
+                    "section": "Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。Preliminaries 的完整置换定义与 Experiments 的 top-100、window 20 / step 10"
+              },
+              "E2Rank (2025-10)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2510.22733",
+                    "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": null,
+                  "output_candidates": null,
+                  "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+                  "note": "不能把一个 embedding 写成输出 1 个候选，也不能把 0 个生成 token 写成输出 0 个候选"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
+              },
+              "ResRank (2026-04)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2604.22180",
+                    "section": "§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "相关性分数"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§III 式(5)：每个候选一个余弦相关性分数，再按分数降序排序"
+              },
+              "PE-Rank (WWW 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2406.14848",
+                    "section": "§3.2 动态受限解码与 §4.1 训练设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 动态受限解码与 §4.1 训练设置"
+              },
+              "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://aclanthology.org/2025.acl-long.8/",
+                    "section": "完整排序定义、RankMistral20/100 与训练标签",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。完整排序定义、RankMistral20/100 与训练标签"
+              }
+            }
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -2269,6 +3557,13 @@
               "title",
               "text"
             ]
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10"
           }
         },
         {
@@ -2301,11 +3596,83 @@
             "id_field": "_id"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
-            "k": 100,
-            "status": "declared",
-            "note": "REARANK 用 window 20，10 次调用"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 100 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "REARANK (EMNLP 2025)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://github.com/lezhang7/Rearank",
+                    "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 100,
+                  "output_candidates": 100,
+                  "output_type": "完整排序"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成"
+              },
+              "ReasonRank (ACL 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://github.com/8421BCD/ReasonRank",
+                    "section": "论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置"
+              }
+            }
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -2335,6 +3702,13 @@
               "title",
               "text"
             ]
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "REARANK 用 window 20，10 次调用"
           }
         },
         {
@@ -2371,11 +3745,31 @@
             "id_field": "_id"
           },
           "n_to_k": {
-            "text": "50 -> 50",
             "n": 50,
             "k": 50,
             "status": "declared",
-            "note": "SPLADE-v3 top 50"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "每候选一个相关性分数，按分数得到完整排序",
+            "output_evidence": [
+              {
+                "url": "https://arxiv.org/abs/2604.26483",
+                "section": "§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 50,
+              "output_candidates": 50,
+              "output_type": "相关性分数"
+            },
+            "text": "输入 50 个候选，输出 50 个分数后排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3：每个候选分隔符隐藏状态计算一个分数；训练 16 个、测试 top-50"
           },
           "candidate": {
             "source": "SPLADE-v3 top 50",
@@ -2405,6 +3799,13 @@
               "title",
               "text"
             ]
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
           }
         }
       ]
@@ -2490,10 +3891,84 @@
             "note": "12 个子集分别统计"
           },
           "n_to_k": {
-            "text": "100 -> 100（top 20 构造 prompt）",
             "n": 100,
-            "k": 100,
-            "status": "declared"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 100 个候选；各论文的输出形式、窗口与最终保留数量分别见 per_paper",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            },
+            "per_paper": {
+              "E2Rank (2025-10)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "每候选一个相关性分数，按分数得到完整排序",
+                "output_evidence": [
+                  {
+                    "url": "https://arxiv.org/abs/2510.22733",
+                    "section": "§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": null,
+                  "output_type": "一个 PRF query embedding；候选相关性分数由后续余弦相似度计算",
+                  "note": "top-100 待重排候选中，仅 top-20 用于构造 listwise PRF prompt；后续对 100 个候选打分，不是一次给 LLM 输入 100 篇原文"
+                },
+                "text": "输入 100 个候选，输出 100 个分数后排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。§3.2 式(1)：一个 PRF query embedding 对候选逐个打分；§4 与附录 B 的候选及 prompt 设置"
+              },
+              "ReasonRank (ACL 2026)": {
+                "n": 100,
+                "k": 100,
+                "status": "declared",
+                "input_status": "declared",
+                "output_status": "verified",
+                "output_type": "全部输入候选的排序置换",
+                "output_evidence": [
+                  {
+                    "url": "https://github.com/8421BCD/ReasonRank",
+                    "section": "论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置",
+                    "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+                  }
+                ],
+                "final_keep": {
+                  "value": null,
+                  "status": "unknown",
+                  "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+                },
+                "single_call": {
+                  "input_candidates": 20,
+                  "output_candidates": 20,
+                  "step": 10,
+                  "output_type": "窗口内的完整排序",
+                  "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+                },
+                "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+                "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置"
+              }
+            }
           },
           "candidate": {
             "source": "ReasonIR 检索 top 100",
@@ -2518,6 +3993,12 @@
               "content"
             ],
             "note": "候选正文在 documents；examples 里是 query、reasoning、gold_ids。"
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100（top 20 构造 prompt）",
+            "n": 100,
+            "k": 100,
+            "status": "declared"
           }
         },
         {
@@ -2554,11 +4035,31 @@
             "id_field": "id"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
             "k": 100,
             "status": "declared",
-            "note": "window 20，10 次调用"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://github.com/lezhang7/Rearank",
+                "section": "论文 §3 的 N 个候选完整置换定义与训练数据合成",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 100,
+              "output_candidates": 100,
+              "output_type": "完整排序"
+            },
+            "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的 N 个候选完整置换定义与训练数据合成"
           },
           "candidate": {
             "source": "BM25 top 100",
@@ -2582,6 +4083,13 @@
               "content"
             ],
             "note": "候选正文在 documents；examples 里是 query、reasoning、gold_ids。"
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "window 20，10 次调用"
           }
         }
       ]
@@ -2683,7 +4191,13 @@
             "n": null,
             "k": null,
             "status": "na",
-            "note": "数据集只给语料和 qrels，不规定重排 N->K"
+            "note": "数据集只给语料和 qrels，不规定重排 N->K",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -2712,6 +4226,13 @@
             "text_fields": [
               "text"
             ]
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集只给语料和 qrels，不规定重排 N->K"
           }
         },
         {
@@ -2744,11 +4265,33 @@
             "id_field": "id"
           },
           "n_to_k": {
-            "text": "100 -> 100",
             "n": 100,
             "k": 100,
             "status": "declared",
-            "note": "E5-Mistral-7B-Instruct top 100，用原 query 重排"
+            "input_status": "declared",
+            "output_status": "verified",
+            "output_type": "全部输入候选的排序置换",
+            "output_evidence": [
+              {
+                "url": "https://github.com/8421BCD/ReasonRank",
+                "section": "论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置",
+                "supports": "完整排序/逐候选打分；不是由评价指标 @10 推断输出数"
+              }
+            ],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "当前核对材料未确认排序后另行截取或交给下游的数量；不把 nDCG@10 当作保留 10 个"
+            },
+            "single_call": {
+              "input_candidates": 20,
+              "output_candidates": 20,
+              "step": 10,
+              "output_type": "窗口内的完整排序",
+              "note": "window 20 / step 10；整个 query 的候选列表仍单独记录"
+            },
+            "text": "输入 100 个候选，输出 100 个候选的完整排序；最终保留数量未确认",
+            "note": "N/M 按整个候选重排列表记；完整排序长度与最终截取数量分别记录。论文 §3 的排序列表、N=100 / w=20 / s=10；§4 的训练与测试设置"
           },
           "candidate": {
             "source": "E5-Mistral-7B-Instruct top 100",
@@ -2776,6 +4319,13 @@
             "text_fields": [
               "text"
             ]
+          },
+          "statistics_metadata_before_ranking_audit": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "E5-Mistral-7B-Instruct top 100，用原 query 重排"
           }
         }
       ]
@@ -2831,7 +4381,13 @@
             "text": "逐 task 不同",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -2849,7 +4405,13 @@
           "record_type": "测试集",
           "record_name": "MTEB English",
           "pool_scope": "candidate_union",
-          "task_count": 56
+          "task_count": 56,
+          "statistics_metadata_before_ranking_audit": {
+            "text": "逐 task 不同",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         },
         {
           "config_id": "mteb-eng-v2",
@@ -2871,7 +4433,13 @@
             "text": "逐 task 不同",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -2887,7 +4455,13 @@
           "record_type": "测试集",
           "record_name": "MTEB English",
           "pool_scope": "candidate_union",
-          "task_count": 41
+          "task_count": 41,
+          "statistics_metadata_before_ranking_audit": {
+            "text": "逐 task 不同",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -2954,7 +4528,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -2971,7 +4551,13 @@
           "record_type": "测试集",
           "record_name": "AIME 2024 / AMC 2023（辅助推理评测）",
           "pool_scope": "na",
-          "note": "辅助数学推理，不是 IR 候选；长度为题面参考"
+          "note": "辅助数学推理，不是 IR 候选；长度为题面参考",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         },
         {
           "config_id": "amc23",
@@ -2997,7 +4583,13 @@
             "text": "不适用",
             "n": null,
             "k": null,
-            "status": "na"
+            "status": "na",
+            "output_status": "na",
+            "output_type": "没有候选重排任务",
+            "final_keep": {
+              "value": null,
+              "status": "na"
+            }
           },
           "candidate": {
             "source": null,
@@ -3014,7 +4606,13 @@
           "record_type": "测试集",
           "record_name": "AIME 2024 / AMC 2023（辅助推理评测）",
           "pool_scope": "na",
-          "note": "辅助数学推理，不是 IR 候选；长度为题面参考"
+          "note": "辅助数学推理，不是 IR 候选；长度为题面参考",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          }
         }
       ]
     },
@@ -3072,11 +4670,25 @@
             "count_status": "declared"
           },
           "n_to_k": {
-            "text": "10000 -> 10",
             "n": 10000,
-            "k": 10,
-            "status": "declared",
-            "note": "论文用 Top-10K 候选；本次统计无法覆盖"
+            "k": null,
+            "status": "unknown",
+            "input_status": "declared",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入 10000 个候选，输出数量待核实",
+            "note": "原配置记录 Top-10K 候选与下游 Top-10；当前未取得候选包并复核对应模型流程，先保留输入规模，输出 10 不当作已核实的模型要求",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "MedCorp 检索",
@@ -3093,7 +4705,14 @@
           },
           "record_type": "测试集",
           "record_name": "MIRAGE",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "10000 -> 10",
+            "n": 10000,
+            "k": 10,
+            "status": "declared",
+            "note": "论文用 Top-10K 候选；本次统计无法覆盖"
+          }
         }
       ]
     },
@@ -3163,10 +4782,25 @@
             "count_status": "measured"
           },
           "n_to_k": {
-            "text": "未说明",
             "n": null,
             "k": null,
-            "status": "unknown"
+            "status": "unknown",
+            "input_status": "unknown",
+            "output_status": "unknown",
+            "output_type": "尚未确认",
+            "text": "输入和输出数量须按具体设置核实",
+            "note": "旧配置中的候选深度不能直接证明要求输出数量；未找到输出依据时不默认 M=N",
+            "output_evidence": [],
+            "final_keep": {
+              "value": null,
+              "status": "unknown",
+              "note": "最终保留数量尚未确认"
+            },
+            "single_call": {
+              "input_candidates": null,
+              "output_candidates": null,
+              "note": "单次调用须独立核实"
+            }
           },
           "candidate": {
             "source": "ReCDS benchmark",
@@ -3181,7 +4815,13 @@
           },
           "record_type": "测试集",
           "record_name": "PMC-Patients / ReCDS",
-          "pool_scope": "candidate_union"
+          "pool_scope": "candidate_union",
+          "statistics_metadata_before_ranking_audit": {
+            "text": "未说明",
+            "n": null,
+            "k": null,
+            "status": "unknown"
+          }
         }
       ]
     }
