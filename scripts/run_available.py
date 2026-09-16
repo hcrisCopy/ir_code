@@ -12,6 +12,7 @@ from stage2 import basic, configurations, csv_update, lengths, write_json
 
 def report(summary):
     lines=['# 服务器第二阶段统计进度','',
+           '**主汇总：`../ir_data/outputs/final_stats.json`，按数据集、论文设定、split/子集查看。**',
            '统计目录与代码同级：`../ir_data/`；tokenizer：`../Qwen/Qwen3-1.7B`。',
            'Token 不截断、不含特殊 token，统计压缩前候选原文；word 仅中英文，中文每汉字计 1。',
            '', '| 配置 / 子集 | query | 候选池 | 平均正例 | 平均 token | 平均 word | 数量 / 长度状态 |',
@@ -26,7 +27,7 @@ def report(summary):
         values=[suffix,b.get('query_count'),pool,b.get('positives_per_query'),l.get('token_mean'),l.get('word_mean'),row['basic']+'/'+row['lengths']]
         lines.append('| '+' | '.join(str(v) if v is not None else '—' for v in values)+' |')
     lines += ['', '星号：全语料/大池子/无 doc ID 的正文并集替代值。公开全集参考不能冒充论文未公开子集。',
-              '四个分位数、有效样本数、语言和覆盖率见 `final_stats.csv`；未就绪与标星原因见 `issues.csv`。',
+              '七项指标、四个分位数、语言、覆盖率和缺项原因均在 `final_stats.json`；CSV 仅为辅助导出。',
               '上传中的文件不覆盖、不截断、不按前缀生成正式结果。']
     path=OUTPUTS_DIR/'reports/run_report.md';path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text('\n'.join(lines)+'\n',encoding='utf-8')
