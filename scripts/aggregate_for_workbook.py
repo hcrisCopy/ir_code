@@ -76,6 +76,9 @@ def main():
     for dataset in summary['datasets'].values():
         for config in dataset['configs']:
             config['dataset_result']=aggregate(config,config['results'])
+    maths=summary['datasets']['auxiliary_math']
+    maths['combined_result']=aggregate(maths['configs'][0],
+        [row for config in maths['configs'] for row in config['results']])
     write_json(OUTPUTS_DIR/'workbook_stats.json',summary)
     print('数据集/论文级合并结果：../ir_data/outputs/workbook_stats.json；未重新编码')
 
