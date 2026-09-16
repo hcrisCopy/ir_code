@@ -147,7 +147,7 @@ def result_for(name, entry, config):
     if name=='auxiliary_math': scope_text='题目原文长度参考，不是候选文本长度'
     return {'subset':config.get('_subset'), '统计范围':scope_text,
             '数量状态':b.get('status','pending'), '长度状态':l.get('status','pending'),
-            '未完成原因':unavailable if b.get('status')!='complete' else (l.get('notes') if l.get('status')!='complete' else None),
+            '未完成原因':unavailable if b.get('status')!='complete' else (length_reason if l.get('status')!='complete' else None),
             'query数量':query,'要求样本多少出多少':ranking_setting(name,config),
             '候选池数量':poolmetric,'每个query平均正样本数量':positives,
             '每个样本平均token':length_metric('token',config,b,l,length_reason),
