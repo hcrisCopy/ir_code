@@ -10,6 +10,28 @@ from _common import IR_CODE, OUTPUTS_DIR, dataset_path, load_manifest, real_file
 from stage2 import basic, configurations, csv_update, lengths, write_json
 
 
+def report(summary):
+    lines=['# 服务器第二阶段统计进度','',
+           '统计目录与代码同级：`../ir_data/`；tokenizer：`../Qwen/Qwen3-1.7B`。',
+           'Token 不截断、不含特殊 token，统计压缩前候选原文；word 仅中英文，中文每汉字计 1。',
+           '', '| 配置 / 子集 | query | 候选池 | 平均正例 | 平均 token | 平均 word | 数量 / 长度状态 |',
+           '|---|---:|---:|---:|---:|---:|---|']
+    for row in summary:
+        suffix=row['config']+('__'+row['subset'] if row.get('subset') else '')
+        b=json.loads((OUTPUTS_DIR/'experiments'/(suffix+'.json')).read_text(encoding='utf-8'))
+        path=OUTPUTS_DIR/'experiments'/(suffix+'_lengths.json')
+        l=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+        pool=str(b.get('pool_size')) if b.get('pool_size') is not None else '未知/不适用'
+        if b.get('pool_status')=='estimate': pool+='*'
+        values=[suffix,b.get('query_count'),pool,b.get('positives_per_query'),l.get('token_mean'),l.get('word_mean'),row['basic']+'/'+row['lengths']]
+        lines.append('| '+' | '.join(str(v) if v is not None else '—' for v in values)+' |')
+    lines += ['', '星号：全语料/大池子/无 doc ID 的正文并集替代值。公开全集参考不能冒充论文未公开子集。',
+              '四个分位数、有效样本数、语言和覆盖率见 `final_stats.csv`；未就绪与标星原因见 `issues.csv`。',
+              '上传中的文件不覆盖、不截断、不按前缀生成正式结果。']
+    path=OUTPUTS_DIR/'reports/run_report.md';path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dataset',nargs='*')
@@ -29,6 +51,9 @@ def main():
     present.sort(key=lambda n:priority.index(n) if n in priority else len(priority))
     summary=[]
     for name,entry,config in configurations(manifest,present):
+        write_json(OUTPUTS_DIR/'run_status.json',{'updated':time.strftime('%Y-%m-%d %H:%M:%S'),
+                   'status':'running','active_config':config['config_id'],'active_subset':config.get('_subset'),
+                   'configs':summary})
         print('\n处理',name,config['config_id'],config.get('_subset',''),flush=True)
         b=basic(manifest,name,entry,config)
         csv_update(OUTPUTS_DIR/'experiment_stats.csv',[b])
@@ -43,6 +68,7 @@ def main():
         write_json(OUTPUTS_DIR/'run_status.json',{'updated':time.strftime('%Y-%m-%d %H:%M:%S'),
                    'status':'running','configs':summary})
         subprocess.run([sys.executable,str(IR_CODE/'scripts/merge_results.py'),'--preview','0'],check=False)
+        report(summary)
     write_json(OUTPUTS_DIR/'run_status.json',{'updated':time.strftime('%Y-%m-%d %H:%M:%S'),
                    'status':'finished','configs':summary})
     return 0
