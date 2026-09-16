@@ -74,6 +74,13 @@ export IR_DATASETS_HOME=../ir_data/_cache/ir_datasets
 
 `tar` 通常由 Linux 系统自带。Hugging Face 数据均为公开仓库，一般不用登录；出现限流时再执行 `hf auth login`。
 
+#### A1.3 ModelScope 配置与 Qwen3-1.7B 下载
+
+```text
+python -m pip install modelscope
+modelscope download --model Qwen/Qwen3-1.7B --local_dir ../Qwen/Qwen3-1.7B
+```
+
 ### A2. 可直接下载的数据
 
 #### A2.1 Hugging Face 数据包
