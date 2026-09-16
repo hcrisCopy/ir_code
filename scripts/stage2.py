@@ -95,8 +95,39 @@ def paths_for(entry, config):
     return sorted(set(files))
 
 
+_CONTENT_SIGNATURE_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def content_signature(path: Path) -> str:
+    """文件内容指纹：大小 + 首尾各 64 KiB 的 SHA256。
+
+    刻意【不】用 mtime。统计流程是"服务器上算、结果拿回本地汇总"，而文件在两台机器上
+    的修改时间几乎必然不同（XFTP 不保留 mtime；rsync -a 虽保留，但历史上传的文件不一致）。
+    指纹一旦含 mtime，服务器算好的 experiments/*.json 在本地会全部被判过期
+    （summarize_results.result_for 的 stale 判定会把 query/候选池/正例/长度整体清空）。
+
+    代价：改了文件中间、且前后 64 KiB 与总大小都没变的情况查不出来。
+    "上传中的文件"不靠这个兜底——basic() 里另有一道按 manifest 声明字节数的精确拦截。
+    """
+    stat = path.stat()
+    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    cached = _CONTENT_SIGNATURE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    block = 64 * 1024
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        digest.update(handle.read(block))
+        if stat.st_size > block:
+            handle.seek(max(0, stat.st_size - block))
+            digest.update(handle.read(block))
+    value = digest.hexdigest()
+    _CONTENT_SIGNATURE_CACHE[key] = value
+    return value
+
+
 def fingerprint(entry, config):
-    signatures = [(to_display(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths_for(entry, config)]
+    signatures = [(to_display(p), p.stat().st_size, content_signature(p)) for p in paths_for(entry, config)]
     statistical_config=copy.deepcopy(config)
     legacy=statistical_config.pop('statistics_metadata_before_ranking_audit',None)
     if legacy is not None:
@@ -290,11 +321,19 @@ def read_positives(db, base, config):
                 qid = str(row.get('id'))
                 pairs = [(qid, str(d), 1) for d in row.get(nested) or []]
             elif isinstance(row, dict):
-                pairs = [(str(row[fields['qid']]), str(row[fields['docid']]), float(row[fields['rel']]))]
+                try:
+                    pairs = [(str(row[fields['qid']]), str(row[fields['docid']]), float(row[fields['rel']]))]
+                except (KeyError,ValueError,TypeError) as error:
+                    raise ValueError(f'qrels 字段/取值解析失败：{path.name} 第 {index+1} 条：{error}') from None
             else:
                 if spec.get('header') and index == 0: continue
-                if len(row) <= max(fields.values()): raise ValueError('qrels 列数与配置不一致')
-                pairs = [(row[fields['qid']],row[fields['docid']],float(row[fields['rel']]))]
+                if len(row) <= max(fields.values()):
+                    raise ValueError(f'qrels 列数与配置不一致：{path.name} 第 {index+1} 行只有 {len(row)} 列，'
+                                     f'配置要求到第 {max(fields.values())+1} 列')
+                try:
+                    pairs = [(row[fields['qid']],row[fields['docid']],float(row[fields['rel']]))]
+                except (ValueError,TypeError) as error:
+                    raise ValueError(f'qrels rel 列解析失败：{path.name} 第 {index+1} 行：{error}') from None
             for qid, did, rel in pairs:
                 # corpus/query 文件均使用 :qid 命名；多来源训练使用显式关联。
                 qid = ':' + qid
@@ -437,10 +476,22 @@ def basic(manifest, name, entry, config, force=False):
         if reported and reported!=nq: notes.append(f'论文/历史表报告 {reported}；本公开文件实际 query {nq}，实测不采用论文数量作分母')
         if result['pool_scope']=='full_corpus': notes.append('无实际候选 run；池规模及长度为全语料替代统计，候选池标 *')
         if config.get('usage_scope')=='public_release': notes.append('公开全集参考统计，不能冒充论文未公开的抽样/阶段划分')
-        if has_positive_labels or read_positives(db,base,config):
+        qrels_error=None
+        try:
+            qrels_ok=has_positive_labels or read_positives(db,base,config)
+        except (ValueError,FileNotFoundError,KeyError,json.JSONDecodeError,EOFError,OSError) as error:
+            qrels_ok,qrels_error=False,error
+        if qrels_ok:
             total=db.execute('SELECT COUNT(*) FROM positives').fetchone()[0]
             result.update(positives_total=total,positives_per_query=round(total/nq,3) if nq else None,positives_status='measured')
+        elif qrels_error is not None:
+            # qrels 是辅助文件：读挂只影响正例指标，不陪葬已实测的 query/候选池。
+            # qrels 文件参与指纹（paths_for），其内容/就位状态变化会触发整条重算。
+            result['positives_status']='unknown'
+            notes.append(f'正例统计失败（query 数与候选池仍为实测值）：{qrels_error}')
         elif (config.get('qrels') or {}).get('status')=='na': result['positives_status']='na'
+        elif ((config.get('qrels') or {}).get('file') or '') not in ('','n/a','relevant_docids'):
+            notes.append('qrels 文件缺失或未解压，正例未统计；文件就位后指纹变化会自动重算')
         if conflicts: notes.append(f'{conflicts} 个 ID 对应不同正文，长度会跳过冲突 ID')
         db.execute('INSERT OR REPLACE INTO meta VALUES(?,?)',('fingerprint',sig)); db.commit()
         result['sample_preview']=first

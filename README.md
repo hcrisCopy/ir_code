@@ -621,10 +621,30 @@ python scripts/count_basic.py --dataset rearank_12k
 python scripts/count_lengths.py --dataset rearank_12k
 python scripts/merge_results.py
 
-# 自动逐个处理当前已上传的目录，支持重跑恢复
-python scripts/run_available.py
-# 只处理指定的数据集
-python scripts/run_available.py --dataset rearank_12k r2med
+# 一键续跑：发现数据 → 盘点进度 → 跳过已完成 → 继续未完成 → 汇总
+python scripts/run_available.py --plan      # ①先只看计划：哪些已完成、哪些要跑、哪些被阻塞
+python scripts/run_available.py             # ②正式跑：自动跳过已完成的配置
+# 计划表里会列出每条待跑配置的动作：数量+长度 / 长度 / 登记（只记录论文声明）/ 阻塞（缺文件）
+
+# 常用开关
+python scripts/run_available.py --dataset r2med beir    # 只处理这些数据集
+python scripts/run_available.py --config r2med-test     # 只处理这些 config
+python scripts/run_available.py --lengths-only          # 只补长度（数量已完成的）
+python scripts/run_available.py --force                 # 忽略已有结果全部重跑
+python scripts/run_available.py --limit 200             # 冒烟：每条只跑 200 个样本，写 debug/
+python scripts/run_available.py --no-token              # 只算 word，不加载 tokenizer
+python scripts/run_available.py --extract               # 先解压（默认不解压，见下）
+
+# 中断后重新执行同一条命令即可续上：已完成且输入指纹未变的配置会被跳过。
+# 每条的结果、状态与耗时都会写进 ../ir_data/outputs/run_status.json。
+
+# 指纹按文件内容（总大小 + 首尾各 64 KiB 的 SHA256）计算，刻意不含 mtime：
+# 服务器算完的 experiments/*.json 拿回本地汇总时不会因时间戳不同被判过期。
+# 代价与兜底见 scripts/stage2.py 里 content_signature 的注释。
+
+# ⚠ 默认不解压：extract_data.py 核对通过后会删掉原包，而有的包解开是几十 GB 量级
+#   （如 tripclick 的 dlfiles.tar.gz 28.7 GiB）。计划表会提示哪些数据集可能需要解压。
+# ⚠ 若 --plan 显示大量"阻塞"，先补数据/等上传完成再跑；空跑的配置不会产生正式结果。
 ```
 
 数量和长度入口都支持 `--dataset`、`--config`、`--all`、`--list`。长度入口支持 `--tokenizer ../Qwen/Qwen3-1.7B` 和 `--limit 100`；limit 结果只写 debug 目录。`--no-token` 仅算 word。解压入口支持 `--dataset/--all/--dry-run/--keep-archive`；汇总入口用 `--preview` 控制预览。

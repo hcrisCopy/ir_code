@@ -301,7 +301,7 @@
         "en"
       ],
       "medical": false,
-      "status": "not_downloaded",
+      "status": "downloading",
       "path": "../ir_data/datasets/kilt_wikipedia_passages",
       "source": {
         "url": "https://github.com/facebookresearch/KILT"
@@ -309,7 +309,7 @@
       "files": [
         {
           "path": "kilt_knowledgesource.json",
-          "approx_bytes": 37320000000,
+          "approx_bytes": 37318876722,
           "extract": "none",
           "note": "本身就是 JSONL 文本，无需解压"
         }
@@ -322,7 +322,7 @@
           "text"
         ]
       },
-      "notes": "整库约 35GiB。Compress-then-Rank 只抽取其中 10M passages 做 compressor 预训练，抽取脚本未发布。",
+      "notes": "整库 34.76 GiB（37,318,876,722 字节）。Compress-then-Rank 只抽取其中 10M passages 做 compressor 预训练，抽取脚本未发布。2026-09-16 22:35 核对：kilt_knowledgesource.json 分片下载中，已下 31.83 / 34.76 GiB（91.6%），还差 2.93 GiB；16 个分片按绝对偏移命名，其中 4 处未下满，主文件尚未拼装完成。",
       "configs": [
         {
           "config_id": "c2r-compressor-pretrain",
@@ -1541,7 +1541,7 @@
         "en"
       ],
       "medical": false,
-      "status": "downloading",
+      "status": "downloaded",
       "path": "../ir_data/datasets/msmarco_passage_v2",
       "source": {
         "url": "https://microsoft.github.io/msmarco/"
@@ -1574,7 +1574,7 @@
         ],
         "note": "从 tar 内逐分片流式读 gzip jsonl"
       },
-      "notes": "2026-09-16 核对：主包正在下载（msmarco_v2_passage.tar.part 约 2GB / 目标 22.1GB），三个附属文件尚未开始。",
+      "notes": "2026-09-16 核对：主包 msmarco_v2_passage.tar 已完成（20.6 GiB，共 4 个文件），query 与 qrels 已就位。",
       "configs": [
         {
           "config_id": "rearank-179-queries",
@@ -2069,7 +2069,7 @@
         "en"
       ],
       "medical": true,
-      "status": "pending_application",
+      "status": "partial",
       "path": "../ir_data/datasets/tripclick",
       "source": {
         "url": "https://tripdatabase.github.io/tripclick/",
@@ -2100,7 +2100,7 @@
           1
         ]
       },
-      "notes": "需申请。train 含 HEAD / TORSO / TAIL 的 RAW qrels，DCTR 只提供 HEAD 的 train/val；test 的 qrels 只有 RAW。三元组解压后约 86GB。",
+      "notes": "需申请，已获授权下载。2026-09-16 核对：benchmark.tar.gz（948 MB，含 topics / qrels / documents）与 dlfiles_runs_test.tar.gz（35.9 MB，BM25 测试 run）已到位；训练三元组包 dlfiles.tar.gz（约 29 GB）尚未取。train 含 HEAD / TORSO / TAIL 的 RAW qrels，DCTR 只提供 HEAD 的 train/val；test 的 qrels 只有 RAW。三元组解压后约 86GB。",
       "configs": [
         {
           "config_id": "tripclick-raw-train",
@@ -2546,7 +2546,7 @@
         "en"
       ],
       "medical": false,
-      "status": "not_downloaded",
+      "status": "downloaded",
       "path": "../ir_data/datasets/trec_dl",
       "source": {
         "url": "https://trec.nist.gov/data/deep.html",
@@ -2583,7 +2583,7 @@
         "note": "正文不在这里，见 text_dataset"
       },
       "text_dataset": "msmarco_passage_v1",
-      "notes": "2019 与 2020 必须分开统计。八个文件由 ir_datasets export 生成，不是下载的压缩包。",
+      "notes": "2019 与 2020 必须分开统计。八个文件由 ir_datasets export 生成，不是下载的压缩包；2026-09-16 核对：8 个 query/qrels 文件全部生成完毕（958.9 KiB）。",
       "configs": [
         {
           "config_id": "trec-dl19-passage-bm25-top100",
