@@ -1,5 +1,6 @@
 """仅在服务器运行的统计边界测试，不读取真实数据集。"""
 import json
+import gzip
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,8 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import stage2 as s
 from _common import percentile_nearest
+from extract_data import process_archive
+from check_data import check_dataset
 
 
 class StatisticsTests(unittest.TestCase):
@@ -74,5 +77,27 @@ class StatisticsTests(unittest.TestCase):
     def test_ijson_mapping_stream(self):
         p=self.root/'mapping.json';p.write_text('{"a":"alpha","b":"beta"}')
         self.assertEqual(list(s.rows_of(p)),[{'id':'a','text':'alpha'},{'id':'b','text':'beta'}])
+    def test_gzip_partial_output_is_rebuilt_before_deletion(self):
+        p=self.root/'text.gz'
+        with gzip.open(p,'wb') as h:h.write(b'complete body')
+        (self.root/'text').write_bytes(b'com')
+        r=process_archive(p,self.root,{'extract':'gz'},False,False)
+        self.assertTrue(r['ok']);self.assertFalse(p.exists())
+        self.assertEqual((self.root/'text').read_bytes(),b'complete body')
+        entry={'path':str(self.root),'files':[{'path':'text.gz','extract':'gz'}]}
+        rows,_=check_dataset('fixture',entry);self.assertEqual(rows[0]['status'],'ok')
+    def test_incomplete_shard_set_not_ready(self):
+        (self.root/'train-0.parquet').write_bytes(b'fixture')
+        entry={'path':str(self.root),'files':[{'path':'train-*.parquet','min_files':2}]}
+        rows,_=check_dataset('fixture',entry);self.assertEqual(rows[0]['status'],'missing')
+    def test_unknown_language_excluded_from_word(self):
+        self.entry['language']=['en','fr']
+        self.config.pop('positive_field');self.config['sample_source']={'kind':'jsonl_list','file':'data.jsonl','unit_field':'document'}
+        self.write([{'qid':0,'source':'miracl_fr','document':['bonjour']},{'qid':1,'source':'miracl_en','document':['hello']}])
+        self.basic()
+        with patch.object(s,'tokenizer_signature',return_value=('testsig','fixture')),patch.object(s,'load_tokenizer',return_value=object()),patch.object(s,'count_tokens',side_effect=lambda t,texts,a:[len(x) for x in texts]):
+            r=s.lengths(self.manifest,'fixture',self.entry,self.config)
+        self.assertEqual(r['token_samples'],2);self.assertEqual(r['word_samples'],1)
+        self.assertEqual(r['excluded_other_language'],1)
 
 if __name__=='__main__':unittest.main()
