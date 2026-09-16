@@ -41,20 +41,20 @@
 
 #### A1.1 创建 Conda 环境
 
-环境统一命名为 `ir_stats`，使用 Python 3.11：
+环境统一命名为 `ir_stats`，使用 Python 3.12。这里采用 3.12 是因为当前固定的 Pyserini 2.4.0 官方以 Python 3.12 和 Java 21 为基准环境：
 
 ```bash
-conda create -n ir_stats python=3.11 -y
+conda create -n ir_stats python=3.12 -y
 conda activate ir_stats
 
 python -m pip install -U pip
 python -m pip install -r requirements.txt
 
-conda install -c conda-forge -y git git-lfs wget jq unzip
+conda install -c conda-forge -y git git-lfs wget jq unzip openjdk=21
 git lfs install
 ```
 
-这里暂不安装 GPU 版 PyTorch。第二阶段只使用 Qwen3-1.7B 的 tokenizer 统计 token 数，不需要加载模型权重；如果后面要运行模型，再按服务器 CUDA 版本单独安装 PyTorch。
+这里不配置 GPU 版 PyTorch。Pyserini 的依赖可能会带入 CPU 版 PyTorch，但第二阶段的文本统计不加载模型权重；如果后面要运行模型，再按服务器 CUDA 版本单独配置 GPU 版 PyTorch。
 
 每次执行下载或统计代码前先运行：
 
@@ -111,12 +111,16 @@ hf download miriad/miriad-4.4M --type dataset \
 hf download xlangai/BRIGHT --type dataset \
   --local-dir ../ir_data/datasets/bright
 
-# AIME 2024。它是辅助推理评测，不是 IR 测试集
-hf download HuggingFaceH4/aime_2024 --type dataset \
-  --local-dir ../ir_data/datasets/aime_2024
+# ReaRank 的辅助数学推理评测：AIME 2024（30题）
+hf download math-ai/aime24 --type dataset \
+  --local-dir ../ir_data/datasets/auxiliary_math/aime24
+
+# ReaRank 论文写作 AMC；根据其明确引用的 LIMO 设置，对应 AMC 2023（40题）
+hf download math-ai/amc23 --type dataset \
+  --local-dir ../ir_data/datasets/auxiliary_math/amc23
 ```
 
-说明：表格中的 AMC 没有注明届次和数据版本，无法补齐；不要自行任选一个 AMC 数据集冒充论文版本。
+说明：AIME24 和 AMC23 只用于 ReaRank 的 reasoning-transfer 辅助实验，不属于 IR/reranking 主测试集。ReaRank 正文把第二项简称为 `AMC`，但该实验明确沿用 LIMO；LIMO 的评测设置明确为 `AMC23`。
 
 #### A2.2 R2MED
 
@@ -140,7 +144,9 @@ done
 
 #### A2.3 MS MARCO Passage v1
 
-下面四个文件足够提供基础语料、query 和 qrels。暂时不要下载 `top1000.train.tar.gz`；它约 175GB，并不等于各论文实际使用的 Top-20/50/100 候选。
+下面四个文件只提供基础语料、全部 query 和 train/dev qrels，可用于统计 query、正样本和完整语料的长度；它们不包含各论文实际使用的候选排序，因此不能单独用于统计“多少进多少出”、候选池并集或论文实际输入样本的长度。
+
+微软官方的 `top1000.train.tar.gz` 确实约为 175GB，包含约 4.78 亿行，格式为 `qid、pid、query、passage`，对应官方提供的 Top-1000 初始排序。当前仍暂不下载：它体积大、重复存放 query 和 passage 文本，而且不等于所有论文采用的 Top-20/50/100 候选。后续先逐篇确认候选来源；优先使用论文公开的候选文件或较小的 ID-only run。只有确认某篇论文使用这套官方 Top-1000、且没有更小的等价候选文件时，再补下载。
 
 ```bash
 mkdir -p ../ir_data/datasets/msmarco_passage_v1
@@ -164,7 +170,7 @@ tar -xzf ../ir_data/datasets/msmarco_passage_v1/queries.tar.gz \
 
 #### A2.4 MS MARCO Document v1
 
-该语料供 TREC DL 2019/2020 Document Ranking 使用。压缩包下载后约 22GB，解压需要更多空间。
+该语料供 TREC DL 2019/2020 Document Ranking 使用。下载文件约 8.45GB（7.87GiB），解压后约 22GB。
 
 ```bash
 mkdir -p ../ir_data/datasets/msmarco_document_v1
@@ -275,7 +281,6 @@ for name in \
   webis-touche2020 \
   dbpedia-entity \
   scifact \
-  signal1m \
   nq \
   hotpotqa \
   fiqa \
@@ -294,16 +299,17 @@ for file in ../ir_data/datasets/beir/public/*.zip; do
 done
 ```
 
-BEIR 中的 `Robust04` 和 `TREC-News` 没有公开的普通 BEIR ZIP；可先下载包含 `raw` 正文的 Castorini/Pyserini 预构建索引，见下一节。原始语料许可仍按“需要申请的数据”办理。
+BEIR 中的 `Signal-1M`、`Robust04` 和 `TREC-News` 都没有当前可用的普通 BEIR ZIP。`signal1m.zip` 的旧地址现已返回 404，不能放在上面的公共 ZIP 循环中。这三项可先下载包含 `raw` 正文的 Castorini/Pyserini 预构建索引，见下一节。Robust04 和 TREC-News 的原始语料许可仍按“需要申请的数据”办理。
 
-#### A2.11 BEIR / Robust04 与 TREC-News 的公开索引
+#### A2.11 BEIR / Signal-1M、Robust04 与 TREC-News 的公开索引
 
-Castorini/Pyserini 公开了这两个数据集的 BEIR `flat` Lucene 索引。索引构建时使用了 `-storeRaw`，每篇文档的原始 BEIR JSON（文档 ID、标题和正文）保存在索引中，因此后续可以导出正文并统计 token、word 和长度分位数。
+Castorini/Pyserini 公开了这三个数据集的 BEIR `flat` Lucene 索引。索引构建时使用了 `-storeRaw`，每篇文档的原始 BEIR JSON（文档 ID、标题和正文）保存在索引中，因此后续可以导出正文并统计 token、word 和长度分位数。
 
-这两份文件不是 NIST 官方原始压缩包，但更接近论文实际使用的 BEIR 处理版本：
+这三份文件不是数据集发布方提供的原始压缩包，但更接近论文实际使用的 BEIR 处理版本：
 
 | 数据集 | 压缩包大小 | 索引文档数 | MD5 |
 | --- | ---: | ---: | --- |
+| Signal-1M | 473.6 MiB | 约 2.86M | 未提供，下载后记录 SHA-256 |
 | Robust04 | 1.61 GiB | 528,036 | `d508fc770002a99a5dc3da3d0fa001b7` |
 | TREC-News | 2.44 GiB | 594,589 | `22e7752c3d0122c28013b33e5e2134ae` |
 
@@ -312,6 +318,10 @@ Castorini/Pyserini 公开了这两个数据集的 BEIR `flat` Lucene 索引。�
 ```bash
 mkdir -p ../ir_data/datasets/beir/prebuilt_indexes/archives
 mkdir -p ../ir_data/datasets/beir/prebuilt_indexes/indexes
+
+wget -c \
+  https://huggingface.co/datasets/castorini/prebuilt-indexes-beir/resolve/main/lucene-inverted/flat/lucene-inverted.beir-v1.0.0-signal1m.flat.20221116.505594.tar.gz \
+  -O ../ir_data/datasets/beir/prebuilt_indexes/archives/signal1m_beir_flat.tar.gz
 
 wget -c \
   https://huggingface.co/datasets/castorini/prebuilt-indexes-beir/resolve/main/lucene-inverted/flat/lucene-inverted.beir-v1.0.0-robust04.flat.20221116.505594.tar.gz \
@@ -327,6 +337,7 @@ wget -c \
 ```bash
 cd ../ir_data/datasets/beir/prebuilt_indexes/archives
 
+sha256sum signal1m_beir_flat.tar.gz > signal1m_beir_flat.tar.gz.sha256
 echo "d508fc770002a99a5dc3da3d0fa001b7  robust04_beir_flat.tar.gz" | md5sum -c -
 echo "22e7752c3d0122c28013b33e5e2134ae  trec-news_beir_flat.tar.gz" | md5sum -c -
 
@@ -336,6 +347,9 @@ cd ../../../../../ir_code
 解压：
 
 ```bash
+tar -xzf ../ir_data/datasets/beir/prebuilt_indexes/archives/signal1m_beir_flat.tar.gz \
+  -C ../ir_data/datasets/beir/prebuilt_indexes/indexes
+
 tar -xzf ../ir_data/datasets/beir/prebuilt_indexes/archives/robust04_beir_flat.tar.gz \
   -C ../ir_data/datasets/beir/prebuilt_indexes/indexes
 
@@ -345,9 +359,29 @@ tar -xzf ../ir_data/datasets/beir/prebuilt_indexes/archives/trec-news_beir_flat.
 find ../ir_data/datasets/beir/prebuilt_indexes/indexes -maxdepth 2 -type d | sort
 ```
 
+下载与这些索引版本配套的 test queries 和 qrels。这里固定 Pyserini 2.4.0 所使用的 `castorini/eval` commit，避免资源随上游更新：
+
+```bash
+mkdir -p ../ir_data/datasets/beir/prebuilt_indexes/metadata
+
+EVAL_COMMIT=0b4acbd929edd11edfd16250457fb70ff69e9b4f
+EVAL_BASE=https://raw.githubusercontent.com/castorini/eval/${EVAL_COMMIT}
+
+for name in signal1m robust04 trec-news; do
+  wget -c \
+    "${EVAL_BASE}/topics/topics.beir-v1.0.0-${name}.test.tsv.gz" \
+    -P ../ir_data/datasets/beir/prebuilt_indexes/metadata
+  wget -c \
+    "${EVAL_BASE}/qrels/qrels.beir-v1.0.0-${name}.test.txt" \
+    -P ../ir_data/datasets/beir/prebuilt_indexes/metadata
+done
+
+gunzip -kf ../ir_data/datasets/beir/prebuilt_indexes/metadata/topics.*.tsv.gz
+```
+
 后续读取时必须使用 `flat` 索引；dense、BGE 或 SPLADE 索引通常不保存正文。Pyserini 可以按 Lucene 内部文档编号遍历，并通过 `doc.raw()` 取得原始 JSON。正文导出脚本将在第二阶段统计代码中统一编写，不要现在把索引当普通文本文件读取。
 
-queries 和 qrels 仍从 BEIR/TREC 官方公开文件读取；上述索引主要补齐受限的 corpus 正文。公开可下载不代表原始版权许可被取消，正式研究记录仍应保留 NIST 申请和授权信息。
+上述索引主要补齐 corpus 正文。queries 和 qrels 不在 Lucene 索引内，后续通过 Pyserini 对应的 BEIR topic/qrels 资源导出，不能把索引文档当作 qrels。公开可下载不代表原始版权许可被取消，正式研究记录仍应保留 NIST 申请和授权信息。
 
 来源：[Pyserini BEIR 索引构建记录](https://github.com/castorini/pyserini/blob/master/pyserini/resources/index-metadata/lucene-inverted.beir-v1.0.0-flat.20221116.505594.README.md)、[Pyserini 文档读取说明](https://github.com/castorini/pyserini/blob/master/docs/usage-fetch.md)。
 
@@ -363,15 +397,19 @@ export HF_DATASETS_CACHE=../ir_data/datasets/mteb_english
 python - <<'PY'
 import mteb
 
-for benchmark_name in ("MTEB(eng, v1)", "MTEB(eng, v2)"):
+expected = {"MTEB(eng, v1)": 56, "MTEB(eng, v2)": 41}
+for benchmark_name, expected_count in expected.items():
     benchmark = mteb.get_benchmark(benchmark_name)
+    assert len(benchmark.tasks) == expected_count, (
+        benchmark_name, len(benchmark.tasks), expected_count
+    )
     print(benchmark_name, len(benchmark.tasks))
     for task in benchmark.tasks:
         task.load_data()
 PY
 ```
 
-MTEB 的 task 数据会进入 `../ir_data/datasets/mteb_english/`。执行完本节后，如需继续运行其他下载命令，可重新执行 0.2 节的缓存变量设置。下一阶段按 task 分开统计，不把 MTEB 汇总成一个虚假的统一 split。
+项目把 `mteb` 固定为 `2.20.10`，并在下载前校验 v1 为 56 个 task、v2 为 41 个 task，避免以后 registry 更新后静默下载不同范围。MTEB 的 task 数据会进入 `../ir_data/datasets/mteb_english/`。执行完本节后，如需继续运行其他下载命令，可重新执行 A1.2 节的缓存变量设置。下一阶段按 task 分开统计，不把 MTEB 汇总成一个虚假的统一 split。
 
 #### A2.13 MIRAGE
 
@@ -382,13 +420,7 @@ git clone --depth 1 https://github.com/gzxiong/MIRAGE.git \
   ../ir_data/datasets/mirage
 ```
 
-论文还提供各检索器的 Top-10K snippet ID 压缩包。它是后续计算真实候选池最有用的文件，可以尝试下载；如果链接再次失效，记录为“候选包未取得”，不要伪造候选池。
-
-```bash
-wget -c \
-  https://virginia.box.com/shared/static/cxq17th6eisl2pn04vp0x723zczlvlzc.zip \
-  -O ../ir_data/datasets/mirage/retrieved_snippets_10k.zip
-```
+论文曾提供各检索器的 Top-10K snippet ID 压缩包，但官方 Box 链接目前返回 404，不能再作为下载命令执行。当前只下载 `benchmark.json`。候选包记为“未取得”；后续若必须统计论文原始候选池，再使用 MedRAG 代码和相应语料、检索器重建，并把重建结果标为复现数据，不能冒充官方候选包。
 
 官方入口：[MIRAGE](https://github.com/gzxiong/MIRAGE)。
 
@@ -473,8 +505,7 @@ mkdir -p ../ir_data/datasets/tripclick
 
 - LongRanker 10K 训练集；
 - ResRank 重标注训练集；
-- RRK 训练集；
-- REARANK 论文中的 AMC 具体版本。
+- RRK 训练集。
 
 后续统计只能使用论文给出的汇总数字并标 `*`，或在作者补充数据后更新，不能用相似数据替代。
 

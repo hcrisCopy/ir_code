@@ -2,8 +2,9 @@
 huggingface_hub
 datasets
 ir_datasets
-mteb
+mteb==2.20.10
 gdown
+pyserini==2.4.0
 
 # Qwen3 tokenizer 与长度统计
 transformers
