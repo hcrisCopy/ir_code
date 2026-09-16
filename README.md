@@ -670,6 +670,8 @@ git pull --ff-only
 
 每个配置完成后自动更新总 JSON；也可运行 `python scripts/merge_results.py --preview 0` 仅重新整理，不重跑 token。全语料候选池和参考长度标 `*`；正文不全或论文抽样名单未公开时，不能当论文精确统计。脚本不自动修改 `record.xlsx`。
 
+需要先展示一部分：`python scripts/export_preview.py --dataset r2med rearank_12k`，只提取已完成配置，不重新编码；展示 JSON 和简表在 `../ir_data/outputs/previews/ready_results.json`、`ready_results.md`。后续可在命令中加入已完成的其他数据集。
+
 服务器边界验证（不读取真实数据集）：
 
 ```bash
