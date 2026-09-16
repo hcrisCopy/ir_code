@@ -1,0 +1,3307 @@
+{
+  "schema_version": 2,
+  "updated": "2026-09-16",
+  "how_to_use": [
+    "按数据集组织；每个 config 对应论文、split、子集和实验设置。配置人工维护，结果另存 ir_data/outputs。",
+    "无 doc ID 时以正文 SHA256 去重统计长度；正文并集不能冒充文档 ID 并集，池数量标星。",
+    "usage_scope=unknown_subset 时只保留论文声明，禁止用公开全集代替；public_release 是单独的公开版本参考统计。",
+    "pool_status 表示相对目标候选并集的可靠性；整库即使实测也标 estimate。",
+    "record_type / record_name 显式绑定回填行；医学数据可有 dataset 与 method 两类用途。"
+  ],
+  "globals": {
+    "tokenizer": {
+      "path": "../Qwen/Qwen3-1.7B",
+      "local_files_only": true,
+      "use_fast": true,
+      "add_special_tokens": false,
+      "truncation": false,
+      "batch_size": 32,
+      "note": "只加载 tokenizer，不加载模型权重；只编码样本正文，不含 query、提示词、编号。"
+    },
+    "percentiles": {
+      "method": "nearest_rank",
+      "values": [
+        25,
+        50,
+        75,
+        90
+      ],
+      "note": "排序后取第 ceil(p/100 * N) 个，不插值。"
+    },
+    "word_rule": {
+      "chinese": "每个汉字计 1 个",
+      "english": "英文 A–Z 单词，内部连字符和撇号保留",
+      "digits": "连续数字计 1 个",
+      "punctuation": "不计",
+      "other_languages": "不纳入 word 均值和分位数，单独报告语言、样本数和排除原因"
+    },
+    "length_scope": {
+      "dedup": "主口径：候选按 doc_id 去重，同一文档只统计一次",
+      "multiplicity": "按训练/候选记录中的出现次数加权，不扩张数组",
+      "note": "两种都出。主口径写成 token_mean / word_mean，对照口径写成 token_mean_multi / word_mean_multi。"
+    }
+  },
+  "datasets": {
+    "msmarco_passage_v1": {
+      "display_name": "MS MARCO Passage Ranking",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "MS MARCO Passage Ranking"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/msmarco_passage_v1",
+      "source": {
+        "url": "https://microsoft.github.io/msmarco/",
+        "note": "MS MARCO v1 passage；TREC DL、PE-Rank、FullRank 共用这份正文，不重复下载。"
+      },
+      "files": [
+        {
+          "path": "collection.tar.gz",
+          "bytes": 1035009698,
+          "md5": "87dd01826da3e2ad45447ba5af577628",
+          "extract": "tar.gz",
+          "contains": "collection.tsv"
+        },
+        {
+          "path": "queries.tar.gz",
+          "extract": "tar.gz",
+          "contains": "queries.train.tsv / queries.dev.tsv / queries.eval.tsv"
+        },
+        {
+          "path": "qrels.train.tsv"
+        },
+        {
+          "path": "qrels.dev.tsv"
+        }
+      ],
+      "text_source": {
+        "kind": "tsv",
+        "file": "collection.tsv",
+        "id_field": 0,
+        "text_fields": [
+          1
+        ],
+        "delimiter": "\t"
+      },
+      "query_source": {
+        "kind": "tsv",
+        "file": "queries.train.tsv",
+        "id_field": 0,
+        "text_field": 1,
+        "delimiter": "\t"
+      },
+      "qrels_source": {
+        "kind": "tsv",
+        "file": "qrels.train.tsv",
+        "fields": {
+          "qid": 0,
+          "docid": 2,
+          "rel": 3
+        },
+        "delimiter": "\t"
+      },
+      "notes": "官方 Top-1000 训练候选约 175GB，本阶段不下载；各论文实际候选来源不同，逐条 config 记录。",
+      "configs": [
+        {
+          "config_id": "longranker-train-10k",
+          "papers": [
+            "LongRanker (WWW 2026)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "从 MS MARCO train 随机抽 10k queries，DeepSeek-V3.2-Exp 生成排序标签；派生数据未发布。"
+          },
+          "query": {
+            "file": "queries.train.tsv",
+            "count": 10000,
+            "count_status": "declared",
+            "note": "随机抽样，未公布 qid"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "单次全排序"
+          },
+          "candidate": {
+            "source": "未说明",
+            "run_file": null,
+            "pool": 8841823,
+            "pool_status": "estimate",
+            "note": "论文未说明候选检索器，只能按 v1 passage 语料规模估算"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "使用教师模型蒸馏标签，未发布，无法统计正样本"
+          },
+          "record_type": "训练集",
+          "record_name": "MS MARCO Passage Ranking",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "msmarco_document_v1": {
+      "display_name": "MS MARCO Document v1",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "TREC DL 2019/2020 Document Ranking"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/msmarco_document_v1",
+      "source": {
+        "url": "https://microsoft.github.io/msmarco/Datasets.html",
+        "note": "仅 RRK 的长文档实验使用。"
+      },
+      "files": [
+        {
+          "path": "msmarco-docs.tsv.gz",
+          "approx_bytes": 8450000000,
+          "extract": "keep",
+          "note": "压缩包内即 tsv，解压后约 22GB，直接流式读取，不解压"
+        }
+      ],
+      "text_source": {
+        "kind": "tsv_gz",
+        "file": "msmarco-docs.tsv.gz",
+        "id_field": 0,
+        "text_fields": [
+          2,
+          3
+        ],
+        "delimiter": "\t"
+      },
+      "notes": "2026-09-16 核对：msmarco-docs.tsv.gz 已下完（8.45GB，与 approx_bytes 一致）。解码后是 docid + url + title + body 四列。",
+      "configs": [
+        {
+          "config_id": "rrk-document",
+          "papers": [
+            "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "derived",
+            "note": "候选 run 未公开"
+          },
+          "query": {
+            "file": "../trec_dl/trec_dl_2019_document_queries.tsv",
+            "count": null,
+            "count_status": "unknown",
+            "note": "与 TREC DL Document 测试集共用"
+          },
+          "n_to_k": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
+          },
+          "candidate": {
+            "source": "SPLADE-v3 top 50",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown",
+            "note": "run 未公开"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "使用 TREC DL document qrels，未随数据发布"
+          },
+          "record_type": "测试集",
+          "record_name": "MS MARCO Document v1",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "kilt_wikipedia_passages": {
+      "display_name": "KILT Wikipedia Passages",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "KILT Wikipedia Passages"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/kilt_wikipedia_passages",
+      "source": {
+        "url": "https://github.com/facebookresearch/KILT"
+      },
+      "files": [
+        {
+          "path": "kilt_knowledgesource.json",
+          "approx_bytes": 37320000000,
+          "extract": "none",
+          "note": "本身就是 JSONL 文本，无需解压"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "kilt_knowledgesource.json",
+        "id_field": "wikipedia_id",
+        "text_fields": [
+          "text"
+        ]
+      },
+      "notes": "整库约 35GiB。Compress-then-Rank 只抽取其中 10M passages 做 compressor 预训练，抽取脚本未发布。",
+      "configs": [
+        {
+          "config_id": "c2r-compressor-pretrain",
+          "papers": [
+            "Compress-then-Rank (AAAI 2026)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "从完整 KILT 抽取 10M passages，具体子集未发布"
+          },
+          "query": {
+            "file": null,
+            "count": null,
+            "count_status": "na",
+            "note": "仅作 compressor 预训练语料，无 query"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 10000000,
+            "pool_status": "declared",
+            "note": "论文声明的抽取规模"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na",
+            "note": "预训练语料，无相关性标注"
+          },
+          "record_type": "训练集",
+          "record_name": "KILT Wikipedia Passages",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "pe_rank_training_data": {
+      "display_name": "PE-Rank 训练集",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "PE-Rank 训练集"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/pe_rank_training_data",
+      "source": {
+        "url": "https://huggingface.co/datasets/liuqi6777/pe_rank_data"
+      },
+      "files": [
+        {
+          "path": "train.jsonl",
+          "approx_bytes": 5020911304,
+          "bytes": 5020911304
+        },
+        {
+          "path": "wiki2m.jsonl",
+          "approx_bytes": 2482239738,
+          "note": "alignment 阶段的 2M Wikipedia 文本，无 query",
+          "bytes": 2482239738
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "train.jsonl",
+        "unit_field": "extra_texts",
+        "note": "extra_texts 是 20 条 passage 正文的列表；ranking 是这 20 条的排序置换。数据本身没有 doc id。"
+      },
+      "notes": "16 个字段中与统计相关的是 messages_w_content、messages_wo_content、extra_texts、ranking。",
+      "configs": [
+        {
+          "config_id": "perank-ltr-232419",
+          "papers": [
+            "PE-Rank (WWW 2025)",
+            "Compress-then-Rank (AAAI 2026)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_list",
+            "file": "train.jsonl",
+            "unit_field": "extra_texts",
+            "per_query": 20
+          },
+          "query": {
+            "file": "train.jsonl",
+            "count": 232419,
+            "count_status": "declared",
+            "note": "论文声明过滤后 232,419 条；实测行数由脚本统计"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "Jina-Embeddings top 20",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown",
+            "note": "每个 query 固定 20 条候选，但数据里没有 doc id，无法求并集"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "用 ranking 置换表示偏好，没有显式相关性等级"
+          },
+          "record_type": "训练集",
+          "record_name": "PE-Rank 训练集",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "resrank-stage1-232419",
+          "papers": [
+            "ResRank (2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "复用 PE-Rank 的 232,419 条，用 Qwen3-Max 重新标注；重标注结果未发布"
+          },
+          "query": {
+            "file": "train.jsonl",
+            "count": 232419,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "PE-Rank 原始候选",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "Qwen3-Max 重标注，未发布"
+          },
+          "record_type": "训练集",
+          "record_name": "PE-Rank 训练集",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "perank-alignment-wiki2m",
+          "papers": [
+            "PE-Rank (WWW 2025)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_list",
+            "file": "wiki2m.jsonl",
+            "unit_field": "extra_texts",
+            "per_query": 1
+          },
+          "query": {
+            "file": null,
+            "count": null,
+            "count_status": "na",
+            "note": "alignment 语料，无 query"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 2000000,
+            "pool_status": "declared",
+            "note": "论文声明从 Atlas 约 31.5M texts 中抽 2M"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na"
+          },
+          "record_type": "训练集",
+          "record_name": "PE-Rank 训练集",
+          "pool_scope": "author_pool",
+          "note": "alignment 语料，无 query；样本长度按公开 wiki2m 统计"
+        }
+      ]
+    },
+    "rank_zephyr_training_data": {
+      "display_name": "RankZephyr 训练集",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "RankZephyr 训练集"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/rank_zephyr_training_data",
+      "source": {
+        "url": "https://huggingface.co/datasets/castorini/rank_zephyr_training_data"
+      },
+      "files": [
+        {
+          "path": "rank_zephyr_training_data.jsonl.gz",
+          "approx_bytes": 57905030,
+          "extract": "keep",
+          "bytes": 57905030
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl_gz",
+        "file": "rank_zephyr_training_data.jsonl.gz",
+        "note": "ShareGPT 格式，字段为 id 和 conversations；候选正文包在 conversations 的 human 消息里，需要按模板切出来。"
+      },
+      "configs": [
+        {
+          "config_id": "c2r-stage2-9978",
+          "papers": [
+            "Compress-then-Rank (AAAI 2026)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "conversation",
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "per_query": 20,
+            "note": "从对话模板中切出候选正文"
+          },
+          "query": {
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "count": 9978,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "MS MARCO 派生",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "对话内含答案顺序，无独立 qrels"
+          },
+          "record_type": "训练集",
+          "record_name": "RankZephyr 训练集",
+          "pool_scope": "candidate_union",
+          "usage_scope": "unknown_subset"
+        },
+        {
+          "config_id": "e2rank-stage2-msmarco-40k",
+          "papers": [
+            "E2Rank (2025-10)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "conversation",
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "per_query": 20,
+            "note": "从该数据集中取 40K 条"
+          },
+          "query": {
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "count": 40000,
+            "count_status": "declared",
+            "note": "论文只给 40K，未说明具体取法"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "MS MARCO 派生",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown"
+          },
+          "record_type": "训练集",
+          "record_name": "RankZephyr 训练集",
+          "pool_scope": "candidate_union",
+          "usage_scope": "unknown_subset"
+        },
+        {
+          "config_id": "rankzephyr-public-all",
+          "papers": [
+            "Compress-then-Rank (AAAI 2026)"
+          ],
+          "paper_role": "method",
+          "split": "release",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "conversation",
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "per_query": 20,
+            "note": "从对话模板中切出候选正文"
+          },
+          "query": {
+            "file": "rank_zephyr_training_data.jsonl.gz",
+            "count": null,
+            "count_status": "measured"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "MS MARCO 派生",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "对话内含答案顺序，无独立 qrels"
+          },
+          "record_type": "训练集",
+          "record_name": "RankZephyr 训练集",
+          "pool_scope": "candidate_union",
+          "usage_scope": "public_release",
+          "note": "RankZephyr 公开全集参考；C2R 9,978 条的选择名单未核实，不拿全集当子集"
+        }
+      ]
+    },
+    "echo_e5_training_data": {
+      "display_name": "Echo E5 训练集",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "Echo E5 训练集"
+        }
+      ],
+      "language": [
+        "zh",
+        "en",
+        "ar",
+        "bn",
+        "es",
+        "fa",
+        "fi",
+        "fr",
+        "hi",
+        "id",
+        "ja",
+        "ko",
+        "ru",
+        "sw",
+        "te",
+        "th"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/echo_e5_training_data",
+      "source": {
+        "url": "https://github.com/jakespringer/echo-embeddings"
+      },
+      "files": [
+        {
+          "path": "echo-data.tar",
+          "approx_bytes": 3900000000,
+          "extract": "tar"
+        }
+      ],
+      "text_source": {
+        "kind": "tar_jsonl",
+        "file": "echo-data.tar",
+        "note": "解压后是多语言 jsonl；含 MIRACL 与 Mr.TyDi 的 16 个语言子集。"
+      },
+      "notes": "多语言：含中文、英文及另外 14 种语言。token 全语言统计；word 只统计中英文，其他语言单独报告。",
+      "configs": [
+        {
+          "config_id": "e2rank-stage1-1509697",
+          "papers": [
+            "E2Rank (2025-10)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "ELI5、HotpotQA、FEVER、MIRACL、MS MARCO Passage/Document、NQ、AllNLI、SQuAD、TriviaQA、Quora、Mr.TyDi、DuReader、T2Ranking 混合"
+          },
+          "query": {
+            "file": null,
+            "count": 1509697,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "未说明",
+            "n": null,
+            "k": null,
+            "status": "unknown"
+          },
+          "candidate": {
+            "source": "混合",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown"
+          },
+          "record_type": "训练集",
+          "record_name": "Echo E5 训练集",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "e2rank_ranking_datasets": {
+      "display_name": "E2Rank Ranking Datasets",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "E2Rank Ranking Datasets"
+        }
+      ],
+      "language": [
+        "zh",
+        "en",
+        "ar",
+        "bn",
+        "es",
+        "fa",
+        "fi",
+        "fr",
+        "hi",
+        "id",
+        "ja",
+        "ko",
+        "ru",
+        "sw",
+        "te",
+        "th"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/e2rank_ranking_datasets",
+      "source": {
+        "url": "https://huggingface.co/datasets/Alibaba-NLP/E2Rank_ranking_datasets"
+      },
+      "files": [
+        {
+          "path": "train.jsonl",
+          "approx_bytes": 1831839221,
+          "bytes": 1831839221
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "train.jsonl",
+        "unit_field": "document",
+        "note": "字段：query、document（16 条正文列表）、ranking（16 的置换）、pos_index、model_output、source。没有 doc id。"
+      },
+      "notes": "source 字段可用于语言/来源区分（例如 cMedQAv2 是中文医疗问答）。多语言数据，word 只统计中英文。",
+      "configs": [
+        {
+          "config_id": "e2rank-stage2-mixed",
+          "papers": [
+            "E2Rank (2025-10)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_list",
+            "file": "train.jsonl",
+            "unit_field": "document",
+            "per_query": 16
+          },
+          "query": {
+            "file": "train.jsonl",
+            "count": 157320,
+            "count_status": "declared",
+            "note": "论文 157,320；公开版 156,223，以实测为准"
+          },
+          "n_to_k": {
+            "text": "16 -> 16",
+            "n": 16,
+            "k": 16,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "混合（HotpotQA、MIRACL、MS MARCO、NQ、TriviaQA、DuReader、T2Ranking、cMedQAv2、mMARCO-Chinese）",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "用 ranking 置换表示偏好"
+          },
+          "record_type": "训练集",
+          "record_name": "E2Rank Ranking Datasets",
+          "pool_scope": "candidate_union",
+          "positive_index_field": "pos_index",
+          "positives_scope": "designated_positive",
+          "note": "公开 train 版本；pos_index 为从 1 开始的指定正例位置，不以 ranking 第一名推断相关性"
+        },
+        {
+          "config_id": "resrank-stage2-87k",
+          "papers": [
+            "ResRank (2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "取自 E2Rank 来源约 87K 条，Qwen3-Max 重标注；重标注结果未发布"
+          },
+          "query": {
+            "file": "train.jsonl",
+            "count": 87000,
+            "count_status": "declared",
+            "note": "87K 是 ResRank 选用规模，不等于 E2Rank 本文规模"
+          },
+          "n_to_k": {
+            "text": "16 -> 16（输出 16 个分数）",
+            "n": 16,
+            "k": 16,
+            "status": "declared",
+            "note": "1 正 + 15 负；query 不计入候选"
+          },
+          "candidate": {
+            "source": "E2Rank 派生",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown"
+          },
+          "record_type": "训练集",
+          "record_name": "E2Rank Ranking Datasets",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "rrk-e2rank-150k",
+          "papers": [
+            "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "论文用 E2Rank 来源的 150K 条，每条 16 篇；与公开版 156,223 条的对应关系论文未说明"
+          },
+          "query": {
+            "file": "train.jsonl",
+            "count": 150000,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "16 -> 16",
+            "n": 16,
+            "k": 16,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "E2Rank 派生",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown"
+          },
+          "record_type": "训练集",
+          "record_name": "E2Rank Ranking Datasets",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "atlas_wikipedia_2020_12": {
+      "display_name": "Atlas Wikipedia 2020-12",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "Atlas Wikipedia 2020-12"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/atlas_wikipedia_2020_12",
+      "source": {
+        "url": "https://github.com/facebookresearch/atlas"
+      },
+      "files": [
+        {
+          "path": "text-list-100-sec.jsonl",
+          "approx_bytes": 21300000000,
+          "extract": "none"
+        },
+        {
+          "path": "infobox.jsonl",
+          "approx_bytes": 2350000000,
+          "extract": "none"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "text-list-100-sec.jsonl",
+        "id_field": "id",
+        "text_fields": [
+          "title",
+          "text"
+        ]
+      },
+      "notes": "PE-Rank 从这个语料抽 2M 条仅用于 alignment，抽取子集未发布。下载由 ir_data/_tools/atlas 的官方脚本完成。",
+      "configs": [
+        {
+          "config_id": "perank-alignment-atlas-2m",
+          "papers": [
+            "PE-Rank (WWW 2025)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "从约 31.5M texts 抽 2M，仅用于 alignment；抽取清单未发布"
+          },
+          "query": {
+            "file": null,
+            "count": null,
+            "count_status": "na",
+            "note": "无 query"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 2000000,
+            "pool_status": "declared"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na"
+          },
+          "record_type": "训练集",
+          "record_name": "Atlas Wikipedia 2020-12",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "fullrank_training_data": {
+      "display_name": "FullRank 训练集",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "FullRank 训练集"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/fullrank_training_data",
+      "source": {
+        "url": "https://github.com/RUC-NLPIR/fullrank/tree/main/training_data",
+        "note": "原仓库名 liuwenhan/msmarco_full_ranking_list"
+      },
+      "files": [
+        {
+          "path": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+          "approx_bytes": 2226986,
+          "bytes": 2226986
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+        "note": "字段：qid、initial_list（doc id 列表）、final_list（完整排序）。只有 doc id，正文要回 msmarco_passage_v1 取。"
+      },
+      "text_dataset": "msmarco_passage_v1",
+      "notes": "这份文件给了真实候选列表（initial_list），是少见的能算出候选池并集的训练集。",
+      "configs": [
+        {
+          "config_id": "fullrank-train-1k",
+          "papers": [
+            "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_ids",
+            "file": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+            "id_field": "initial_list",
+            "text_dataset": "msmarco_passage_v1"
+          },
+          "query": {
+            "file": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+            "count": 1000,
+            "count_status": "declared",
+            "note": "MS MARCO train 随机抽 1k，未公布 qid"
+          },
+          "n_to_k": {
+            "text": "20 -> 20（RankMistral20）/ 100 -> 100（RankMistral100）",
+            "n": null,
+            "k": null,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "BM25 top 20 或 top 100",
+            "run_file": "initial_list",
+            "pool": null,
+            "pool_status": "measured",
+            "note": "候选池按 initial_list 的 doc id 并集实测"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "标签由 GPT-4o-mini / GPT-4o 生成，不随文件发布"
+          },
+          "record_type": "训练集",
+          "record_name": "FullRank 训练集",
+          "pool_scope": "candidate_union",
+          "usage_scope": "unknown_subset",
+          "note": "公开文件是 top100 的一个教师配置；不能自动代表 top20 或其他教师版本"
+        },
+        {
+          "config_id": "fullrank-public-top100",
+          "papers": [
+            "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_ids",
+            "file": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+            "id_field": "initial_list",
+            "text_dataset": "msmarco_passage_v1"
+          },
+          "query": {
+            "file": "msmarco_gpt-4o-2024-08-06_bm25-top100-slidingwindow_9passes.jsonl",
+            "count": 1000,
+            "count_status": "declared",
+            "note": "MS MARCO train 随机抽 1k，未公布 qid"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "BM25 top 20 或 top 100",
+            "run_file": "initial_list",
+            "pool": null,
+            "pool_status": "measured",
+            "note": "候选池按 initial_list 的 doc id 并集实测"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "标签由 GPT-4o-mini / GPT-4o 生成，不随文件发布"
+          },
+          "record_type": "训练集",
+          "record_name": "FullRank 训练集",
+          "pool_scope": "candidate_union",
+          "usage_scope": "public_release",
+          "note": "本公开文件的 BM25 top100 候选并集；其他教师/top20 设置另行核对"
+        }
+      ]
+    },
+    "msmarco_passage_v2": {
+      "display_name": "MS MARCO v2 Passage",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "MS MARCO v2 Passage"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloading",
+      "path": "../ir_data/datasets/msmarco_passage_v2",
+      "source": {
+        "url": "https://microsoft.github.io/msmarco/"
+      },
+      "files": [
+        {
+          "path": "msmarco_v2_passage.tar",
+          "approx_bytes": 22100000000,
+          "extract": "keep",
+          "note": "包内已是 gzip JSONL 分片，不要解开"
+        },
+        {
+          "path": "passv2_train_queries.tsv"
+        },
+        {
+          "path": "passv2_train_qrels.tsv"
+        },
+        {
+          "path": "passv2_train_top100.txt.gz",
+          "approx_bytes": 340000000,
+          "extract": "keep"
+        }
+      ],
+      "text_source": {
+        "kind": "tar_jsonl_gz",
+        "file": "msmarco_v2_passage.tar",
+        "id_field": "pid",
+        "text_fields": [
+          "passage"
+        ],
+        "note": "从 tar 内逐分片流式读 gzip jsonl"
+      },
+      "notes": "2026-09-16 核对：主包正在下载（msmarco_v2_passage.tar.part 约 2GB / 目标 22.1GB），三个附属文件尚未开始。",
+      "configs": [
+        {
+          "config_id": "rearank-179-queries",
+          "papers": [
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "从每个 query 的 BM25 top 100 抽样构造，成品见 rearank_12k"
+          },
+          "query": {
+            "file": "passv2_train_qrels.tsv",
+            "count": 179,
+            "count_status": "declared",
+            "note": "选带 0-3 级 qrels 的 179 个 query"
+          },
+          "n_to_k": {
+            "text": "100 -> 20",
+            "n": 100,
+            "k": 20,
+            "status": "declared",
+            "note": "从 BM25 top 100 抽 20 篇"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": "passv2_train_top100.txt.gz",
+            "pool": null,
+            "pool_status": "measured"
+          },
+          "qrels": {
+            "file": "passv2_train_qrels.tsv",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "训练集",
+          "record_name": "MS MARCO v2 Passage",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "rearank_12k": {
+      "display_name": "REARANK 12K",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "REARANK 12K"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/rearank_12k",
+      "source": {
+        "url": "https://huggingface.co/datasets/le723z/rearank_12k"
+      },
+      "files": [
+        {
+          "path": "filtered_train_high_ndcg_ideal/train-00000-of-00001.parquet",
+          "approx_bytes": 22780318,
+          "bytes": 22780318
+        }
+      ],
+      "text_source": {
+        "kind": "parquet_nested",
+        "file": "filtered_train_high_ndcg_ideal/train-*.parquet",
+        "unit_field": "hits",
+        "id_field": "docid",
+        "text_fields": [
+          "content"
+        ],
+        "note": "hits 是 20 条结构体，含 content / docid / qid / rank / score，正文和 doc id 都在里面。"
+      },
+      "notes": "实测 data_source 全部为 TREC-DL-TOP100（12,603 条）。有 docid 也有正文，候选池和长度都能直接算。",
+      "configs": [
+        {
+          "config_id": "rearank-12k",
+          "papers": [
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "parquet_nested",
+            "file": "filtered_train_high_ndcg_ideal/train-*.parquet",
+            "unit_field": "hits",
+            "per_query": 20
+          },
+          "query": {
+            "file": "filtered_train_high_ndcg_ideal/train-*.parquet",
+            "count": 179,
+            "count_status": "declared",
+            "id_field": "hits",
+            "note": "论文为 179 个 query x 每 query 50 次抽样；公开版 12,603 行，实测不同 qid 为 177"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared",
+            "note": "179 queries x 每 query 50 次抽样"
+          },
+          "candidate": {
+            "source": "BM25 top 100（TREC-DL）",
+            "run_file": "hits[].docid",
+            "pool": null,
+            "pool_status": "measured",
+            "note": "按 hits 内 docid 并集实测"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "自带 metrics 与 new_rank，无独立 qrels"
+          },
+          "record_type": "训练集",
+          "record_name": "REARANK 12K",
+          "pool_scope": "candidate_union",
+          "note": "公开 train 实测口径；与论文声明 query 数分别记录，增强行数另记"
+        }
+      ]
+    },
+    "reasonrank_data_13k": {
+      "display_name": "ReasonRank Data 13K",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "ReasonRank Data 13K"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/reasonrank_data_13k",
+      "source": {
+        "url": "https://huggingface.co/datasets/liuwenhan/reasonrank_data_13k"
+      },
+      "files": [
+        {
+          "path": "training_data_all.jsonl",
+          "approx_bytes": 69940615,
+          "bytes": 69940615
+        },
+        {
+          "path": "id_doc/<domain>.json",
+          "note": "10 个领域，doc id -> 正文"
+        },
+        {
+          "path": "id_query/<domain>.json",
+          "note": "10 个领域，qid -> query 正文"
+        },
+        {
+          "path": "id_doc/msmarco.json",
+          "bytes": 3206157098,
+          "note": "最大正文映射，必须完整上传；流式解析"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl_plus_idmap",
+        "file": "id_doc/<domain>.json",
+        "id_field": "key",
+        "text_fields": [
+          "value"
+        ],
+        "note": "training_data_all.jsonl 只给 id（initial_list / final_list / relevant_docids），正文从 id_doc/<domain>.json 取。领域：biology、earth_science、economics、leetcode、math-qa、math-theorem、msmarco、robotics、stackoverflow、sustainable_living。"
+      },
+      "notes": "有 initial_list、final_list 和 relevant_docids，候选池和正样本都能算。",
+      "configs": [
+        {
+          "config_id": "reasonrank-13k",
+          "papers": [
+            "ReasonRank (ACL 2026)"
+          ],
+          "paper_role": "method",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_ids",
+            "file": "training_data_all.jsonl",
+            "id_field": "initial_list",
+            "per_query": 20,
+            "text_source": "id_doc/<domain>.json"
+          },
+          "query": {
+            "file": "training_data_all.jsonl",
+            "count": 13517,
+            "count_status": "declared",
+            "note": "论文 13,517；公开总集 13,549（SFT 6,778 + RL train 6,721 + RL validation 50）"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "BM25 top 20",
+            "run_file": "initial_list",
+            "pool": null,
+            "pool_status": "measured"
+          },
+          "qrels": {
+            "file": "relevant_docids",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "用 relevant_docids 作为正样本"
+          },
+          "record_type": "训练集",
+          "record_name": "ReasonRank Data 13K",
+          "pool_scope": "candidate_union",
+          "usage_scope": "unknown_subset"
+        },
+        {
+          "config_id": "reasonrank-public-all",
+          "papers": [
+            "ReasonRank (ACL 2026)"
+          ],
+          "paper_role": "method",
+          "split": "mixed",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "jsonl_ids",
+            "file": "training_data_all.jsonl",
+            "id_field": "initial_list",
+            "per_query": 20,
+            "text_source": "id_doc/<domain>.json"
+          },
+          "query": {
+            "file": "training_data_all.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "note": "论文 13,517；公开总集 13,549（SFT 6,778 + RL train 6,721 + RL validation 50）"
+          },
+          "n_to_k": {
+            "text": "20 -> 20",
+            "n": 20,
+            "k": 20,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "BM25 top 20",
+            "run_file": "initial_list",
+            "pool": null,
+            "pool_status": "measured"
+          },
+          "qrels": {
+            "file": "relevant_docids",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "用 relevant_docids 作为正样本"
+          },
+          "record_type": "训练集",
+          "record_name": "ReasonRank Data 13K",
+          "pool_scope": "candidate_union",
+          "usage_scope": "public_release",
+          "positive_field": "relevant_docids",
+          "positives_scope": "candidate_pool",
+          "note": "公开总集参考；含 SFT、RL train、RL validation，不能作为单一 train split 回填"
+        }
+      ]
+    },
+    "miriad_4_4m": {
+      "display_name": "MIRIAD-4.4M",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "MIRIAD-4.4M"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/miriad_4_4m",
+      "source": {
+        "url": "https://huggingface.co/datasets/miriad/miriad-4.4M",
+        "paper": "Zheng et al., MIRIAD, arXiv 2024"
+      },
+      "files": [
+        {
+          "path": "data/train-*.parquet",
+          "note": "49 个 parquet 分片",
+          "min_files": 49
+        }
+      ],
+      "text_source": {
+        "kind": "parquet",
+        "file": "data/train-*.parquet",
+        "id_field": "qa_id",
+        "text_fields": [
+          "passage_text"
+        ],
+        "extra_fields": [
+          "paper_title"
+        ]
+      },
+      "notes": "字段：qa_id、paper_id、question、answer、paper_url、paper_title、passage_text、passage_position、year、venue、specialty。只有 train split。",
+      "configs": [
+        {
+          "config_id": "miriad-train",
+          "papers": [
+            "Zheng et al., MIRIAD (arXiv 2024)"
+          ],
+          "paper_role": "dataset",
+          "split": "train",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "parquet",
+            "file": "data/train-*.parquet",
+            "unit_field": "passage_text",
+            "note": "样本 = passage_text；标题另存 paper_title",
+            "min_files": 49,
+            "id_fields": [
+              "paper_id",
+              "passage_position"
+            ]
+          },
+          "query": {
+            "file": "data/train-*.parquet",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "qa_id",
+            "note": "论文只给 4.4M 总量，query 数按 qa_id 去重实测"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集本身不含重排实验设置"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "na",
+            "note": "无候选 run，候选池无从谈起"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na",
+            "note": "query-response 对，非 qrels 结构"
+          },
+          "record_type": "训练集",
+          "record_name": "MIRIAD-4.4M",
+          "pool_scope": "na"
+        }
+      ]
+    },
+    "tripclick": {
+      "display_name": "TripClick",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "TripClick"
+        },
+        {
+          "type": "测试集",
+          "name": "TripClick"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "pending_application",
+      "path": "../ir_data/datasets/tripclick",
+      "source": {
+        "url": "https://tripdatabase.github.io/tripclick/",
+        "paper": "Rekabsaz et al., SIGIR 2021"
+      },
+      "files": [
+        {
+          "path": "benchmark.tar.gz",
+          "approx_bytes": 975000000,
+          "extract": "tar.gz"
+        },
+        {
+          "path": "dlfiles.tar.gz",
+          "approx_bytes": 31140000000,
+          "extract": "tar.gz"
+        },
+        {
+          "path": "dlfiles_runs_test.tar.gz",
+          "approx_bytes": 36700000,
+          "extract": "tar.gz"
+        }
+      ],
+      "text_source": {
+        "kind": "trec_or_tsv",
+        "file": "documents/docs.tsv",
+        "id_field": 0,
+        "text_fields": [
+          1
+        ]
+      },
+      "notes": "需申请。train 含 HEAD / TORSO / TAIL 的 RAW qrels，DCTR 只提供 HEAD 的 train/val；test 的 qrels 只有 RAW。三元组解压后约 86GB。",
+      "configs": [
+        {
+          "config_id": "tripclick-raw-train",
+          "papers": [
+            "TripClick 数据集自身论文"
+          ],
+          "paper_role": "dataset",
+          "split": "train",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "tsv_triples",
+            "file": "triples.train.tsv",
+            "note": "每行是 query、正例、负例三元组"
+          },
+          "query": {
+            "file": "benchmark.tar.gz",
+            "count": null,
+            "count_status": "measured",
+            "note": "论文称约 685,000 用作训练"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集按 pairwise 三元组提供，不是 listwise N->K"
+          },
+          "candidate": {
+            "source": "click log 派生",
+            "run_file": null,
+            "pool": 1500000,
+            "pool_status": "estimate",
+            "note": "论文称约 1.5M MEDLINE 文档"
+          },
+          "qrels": {
+            "file": "qrels/qrels.raw.<head|torso|tail>.train.tsv",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "训练集",
+          "record_name": "TripClick",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "tripclick-raw-test",
+          "papers": [
+            "TripClick 数据集自身论文"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "tsv_tuples",
+            "file": "dlfiles/tuples.<head|torso|tail>.test.top200.tsv",
+            "per_query": 200,
+            "note": "test 每 query 200 条候选"
+          },
+          "query": {
+            "file": "benchmark.tar.gz",
+            "count": null,
+            "count_status": "measured",
+            "note": "HEAD / TORSO / TAIL 各 1,175 个，需分开统计"
+          },
+          "n_to_k": {
+            "text": "200 -> 200",
+            "n": 200,
+            "k": 200,
+            "status": "declared",
+            "note": "官方 test 候选深度 200"
+          },
+          "candidate": {
+            "source": "官方 BM25 run",
+            "run_file": "runs_test/run.trip.BM25.<head|torso|tail>.test.txt",
+            "pool": null,
+            "pool_status": "measured",
+            "note": "官方给了 run 文件，可求并集"
+          },
+          "qrels": {
+            "file": "qrels/qrels.raw.<head|torso|tail>.test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "test 只有 RAW"
+          },
+          "record_type": "测试集",
+          "record_name": "TripClick",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "nfcorpus": {
+      "display_name": "NFCorpus",
+      "record_rows": [
+        {
+          "type": "训练集",
+          "name": "NFCorpus"
+        },
+        {
+          "type": "测试集",
+          "name": "NFCorpus"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/beir/public/nfcorpus",
+      "source": {
+        "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/nfcorpus.zip",
+        "paper": "Boteva et al., ECIR 2016"
+      },
+      "files": [
+        {
+          "path": "corpus.jsonl"
+        },
+        {
+          "path": "queries.jsonl"
+        },
+        {
+          "path": "qrels/train.tsv"
+        },
+        {
+          "path": "qrels/test.tsv"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "corpus.jsonl",
+        "id_field": "_id",
+        "text_fields": [
+          "title",
+          "text"
+        ]
+      },
+      "query_source": {
+        "kind": "jsonl",
+        "file": "queries.jsonl",
+        "id_field": "_id",
+        "text_field": "text"
+      },
+      "qrels_source": {
+        "kind": "tsv",
+        "file": "qrels/<split>.tsv",
+        "fields": {
+          "qid": 0,
+          "docid": 2,
+          "rel": 3
+        }
+      },
+      "notes": "同一个 zip 里含 train / dev / test，只存一份目录，统计必须分开。",
+      "configs": [
+        {
+          "config_id": "nfcorpus-train",
+          "papers": [
+            "Boteva et al., ECIR 2016"
+          ],
+          "paper_role": "dataset",
+          "split": "train",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "corpus.jsonl",
+            "unit_field": "text",
+            "note": "样本 = title + 正文"
+          },
+          "query": {
+            "file": "queries.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "_id",
+            "selection_qrels": "qrels/train.tsv"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 3633,
+            "pool_status": "estimate",
+            "note": "无候选 run，只能按 corpus 规模估算"
+          },
+          "qrels": {
+            "file": "qrels/train.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "训练集",
+          "record_name": "NFCorpus",
+          "pool_scope": "full_corpus"
+        },
+        {
+          "config_id": "nfcorpus-test",
+          "papers": [
+            "Boteva et al., ECIR 2016"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "queries.jsonl",
+            "count": 323,
+            "count_status": "declared",
+            "id_field": "_id",
+            "note": "BEIR 版 test 为 323 个 query",
+            "selection_qrels": "qrels/test.tsv"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 3633,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "qrels/test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "测试集",
+          "record_name": "NFCorpus",
+          "pool_scope": "full_corpus"
+        }
+      ]
+    },
+    "trec_covid": {
+      "display_name": "TREC-COVID",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "TREC-COVID"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/beir/public/trec-covid",
+      "source": {
+        "url": "https://ir.nist.gov/trec-covid/data.html",
+        "paper": "Voorhees et al., 2020"
+      },
+      "files": [
+        {
+          "path": "corpus.jsonl"
+        },
+        {
+          "path": "queries.jsonl"
+        },
+        {
+          "path": "qrels/test.tsv"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "corpus.jsonl",
+        "id_field": "_id",
+        "text_fields": [
+          "title",
+          "text"
+        ]
+      },
+      "query_source": {
+        "kind": "jsonl",
+        "file": "queries.jsonl",
+        "id_field": "_id",
+        "text_field": "text"
+      },
+      "qrels_source": {
+        "kind": "tsv",
+        "file": "qrels/test.tsv",
+        "fields": {
+          "qid": 0,
+          "docid": 2,
+          "rel": 3
+        }
+      },
+      "notes": "同时属于 BEIR 和医学测试集，只存一份。",
+      "configs": [
+        {
+          "config_id": "trec-covid-test",
+          "papers": [
+            "Voorhees et al., TREC-COVID, 2020"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "queries.jsonl",
+            "count": 50,
+            "count_status": "declared",
+            "id_field": "_id"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": 171332,
+            "pool_status": "estimate",
+            "note": "BEIR 版语料约 171K，无候选 run"
+          },
+          "qrels": {
+            "file": "qrels/test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "分级 0-2",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "测试集",
+          "record_name": "TREC-COVID",
+          "pool_scope": "full_corpus"
+        }
+      ]
+    },
+    "trec_dl": {
+      "display_name": "TREC DL 2019 / 2020",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "TREC DL 2019 Passage Ranking"
+        },
+        {
+          "type": "测试集",
+          "name": "TREC DL 2020 Passage Ranking"
+        },
+        {
+          "type": "测试集",
+          "name": "TREC DL 2019/2020 Document Ranking"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/trec_dl",
+      "source": {
+        "url": "https://trec.nist.gov/data/deep.html",
+        "note": "只有 query 和 qrels；正文分别复用 msmarco_passage_v1 和 msmarco_document_v1。"
+      },
+      "files": [
+        {
+          "path": "trec_dl_2019_passage_queries.tsv"
+        },
+        {
+          "path": "trec_dl_2019_passage_qrels.tsv"
+        },
+        {
+          "path": "trec_dl_2020_passage_queries.tsv"
+        },
+        {
+          "path": "trec_dl_2020_passage_qrels.tsv"
+        },
+        {
+          "path": "trec_dl_2019_document_queries.tsv"
+        },
+        {
+          "path": "trec_dl_2019_document_qrels.tsv"
+        },
+        {
+          "path": "trec_dl_2020_document_queries.tsv"
+        },
+        {
+          "path": "trec_dl_2020_document_qrels.tsv"
+        }
+      ],
+      "text_source": {
+        "kind": "external",
+        "note": "正文不在这里，见 text_dataset"
+      },
+      "text_dataset": "msmarco_passage_v1",
+      "notes": "2019 与 2020 必须分开统计。八个文件由 ir_datasets export 生成，不是下载的压缩包。",
+      "configs": [
+        {
+          "config_id": "trec-dl19-passage-bm25-top100",
+          "papers": [
+            "LongRanker (WWW 2026)",
+            "Compress-then-Rank (AAAI 2026)",
+            "E2Rank (2025-10)",
+            "ResRank (2026-04)",
+            "PE-Rank (WWW 2025)",
+            "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)",
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "external",
+            "text_dataset": "msmarco_passage_v1",
+            "note": "样本 = MS MARCO passage 正文"
+          },
+          "query": {
+            "file": "trec_dl_2019_passage_queries.tsv",
+            "count": 43,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10；E2Rank 用 top 20 构造 prompt 再给 top 100 打分"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate",
+            "note": "论文候选 run 未公开，只能标 *"
+          },
+          "qrels": {
+            "file": "trec_dl_2019_passage_qrels.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "分级 0-3"
+          },
+          "record_type": "测试集",
+          "record_name": "TREC DL 2019 Passage Ranking",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "trec-dl19-passage-splade-v3-top50",
+          "papers": [
+            "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "external",
+            "text_dataset": "msmarco_passage_v1"
+          },
+          "query": {
+            "file": "trec_dl_2019_passage_queries.tsv",
+            "count": 43,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
+          },
+          "candidate": {
+            "source": "SPLADE-v3 top 50",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "trec_dl_2019_passage_qrels.tsv",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "测试集",
+          "record_name": "TREC DL 2019 Passage Ranking",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "trec-dl20-passage-bm25-top100",
+          "papers": [
+            "LongRanker (WWW 2026)",
+            "Compress-then-Rank (AAAI 2026)",
+            "E2Rank (2025-10)",
+            "ResRank (2026-04)",
+            "PE-Rank (WWW 2025)",
+            "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)",
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "external",
+            "text_dataset": "msmarco_passage_v1"
+          },
+          "query": {
+            "file": "trec_dl_2020_passage_queries.tsv",
+            "count": 54,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "窗口设置同 2019"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "trec_dl_2020_passage_qrels.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "note": "分级 0-3"
+          },
+          "record_type": "测试集",
+          "record_name": "TREC DL 2020 Passage Ranking",
+          "pool_scope": "candidate_union"
+        },
+        {
+          "config_id": "trec-dl20-passage-splade-v3-top50",
+          "papers": [
+            "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "external",
+            "text_dataset": "msmarco_passage_v1"
+          },
+          "query": {
+            "file": "trec_dl_2020_passage_queries.tsv",
+            "count": 54,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "SPLADE-v3 top 50",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "trec_dl_2020_passage_qrels.tsv",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "测试集",
+          "record_name": "TREC DL 2020 Passage Ranking",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "beir": {
+      "display_name": "BEIR",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "BEIR"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/beir",
+      "source": {
+        "url": "https://github.com/beir-cellar/beir",
+        "paper": "Thakur et al., BEIR, NeurIPS 2021"
+      },
+      "files": [
+        {
+          "path": "public/<name>.zip",
+          "extract": "zip",
+          "note": "12 个公开子集",
+          "min_files": 12,
+          "extracted_pattern": "public/*/corpus.jsonl",
+          "extract_to": "public"
+        },
+        {
+          "path": "prebuilt_indexes/archives/signal1m_beir_flat.tar.gz",
+          "extract": "tar.gz",
+          "extract_to": "prebuilt_indexes/indexes"
+        },
+        {
+          "path": "prebuilt_indexes/archives/robust04_beir_flat.tar.gz",
+          "md5": "d508fc770002a99a5dc3da3d0fa001b7",
+          "extract": "tar.gz",
+          "extract_to": "prebuilt_indexes/indexes"
+        },
+        {
+          "path": "prebuilt_indexes/archives/trec-news_beir_flat.tar.gz",
+          "md5": "22e7752c3d0122c28013b33e5e2134ae",
+          "extract": "tar.gz",
+          "extract_to": "prebuilt_indexes/indexes"
+        },
+        {
+          "path": "prebuilt_indexes/metadata/topics.beir-v1.0.0-<name>.test.tsv"
+        },
+        {
+          "path": "prebuilt_indexes/metadata/qrels.beir-v1.0.0-<name>.test.txt"
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl_or_lucene",
+        "note": "公开子集用 public/<name>/corpus.jsonl；Robust04、TREC-News、Signal-1M 用 prebuilt_indexes/indexes 下的 Lucene 索引（构建时带 -storeRaw，可导出正文）。"
+      },
+      "notes": "子集范围按论文分成三套，见 configs 的 subsets。Robust04 / TREC-News 的官方语料仍需申请，公开索引只用于推进统计。2026-09-16 核对：datasets/beir/ 目录为空，尚未开始下载。",
+      "configs": [
+        {
+          "config_id": "beir-8",
+          "papers": [
+            "LongRanker (WWW 2026)",
+            "Compress-then-Rank (AAAI 2026)",
+            "E2Rank (2025-10)",
+            "ResRank (2026-04)",
+            "PE-Rank (WWW 2025)",
+            "FullRank / Sliding Windows Are Not the End (ACL 2025 Oral)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "subsets": [
+            "trec-covid",
+            "nfcorpus",
+            "webis-touche2020",
+            "dbpedia-entity",
+            "scifact",
+            "signal1m",
+            "trec-news",
+            "robust04"
+          ],
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "public/<subset>/queries.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "_id",
+            "note": "每个子集分别统计，不合并成一个 query 数"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "C2R / PE-Rank / FullRank 另报 window 20 / step 10"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate",
+            "note": "逐子集标 *"
+          },
+          "qrels": {
+            "file": "public/<subset>/qrels/test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "测试集",
+          "record_name": "BEIR",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "id_field": "_id",
+            "text_fields": [
+              "title",
+              "text"
+            ]
+          }
+        },
+        {
+          "config_id": "beir-7",
+          "papers": [
+            "REARANK (EMNLP 2025)",
+            "ReasonRank (ACL 2026)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "subsets": [
+            "trec-covid",
+            "nfcorpus",
+            "dbpedia-entity",
+            "scifact",
+            "signal1m",
+            "trec-news",
+            "robust04"
+          ],
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "public/<subset>/queries.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "_id"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "REARANK 用 window 20，10 次调用"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "public/<subset>/qrels/test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "测试集",
+          "record_name": "BEIR",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "id_field": "_id",
+            "text_fields": [
+              "title",
+              "text"
+            ]
+          }
+        },
+        {
+          "config_id": "beir-12",
+          "papers": [
+            "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "subsets": [
+            "trec-covid",
+            "nfcorpus",
+            "nq",
+            "hotpotqa",
+            "fiqa",
+            "webis-touche2020",
+            "quora",
+            "dbpedia-entity",
+            "scidocs",
+            "fever",
+            "climate-fever",
+            "scifact"
+          ],
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "public/<subset>/queries.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "_id"
+          },
+          "n_to_k": {
+            "text": "50 -> 50",
+            "n": 50,
+            "k": 50,
+            "status": "declared",
+            "note": "SPLADE-v3 top 50"
+          },
+          "candidate": {
+            "source": "SPLADE-v3 top 50",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "public/<subset>/qrels/test.tsv",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": 0,
+              "docid": 1,
+              "rel": 2
+            },
+            "header": true
+          },
+          "record_type": "测试集",
+          "record_name": "BEIR",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "jsonl",
+            "file": "public/<subset>/corpus.jsonl",
+            "id_field": "_id",
+            "text_fields": [
+              "title",
+              "text"
+            ]
+          }
+        }
+      ]
+    },
+    "bright": {
+      "display_name": "BRIGHT",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "BRIGHT"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/bright",
+      "source": {
+        "url": "https://huggingface.co/datasets/xlangai/BRIGHT",
+        "paper": "Su et al., BRIGHT, ICLR 2025"
+      },
+      "files": [
+        {
+          "path": "documents/<subset>-00000-of-00001.parquet"
+        },
+        {
+          "path": "examples/<subset>-00000-of-00001.parquet"
+        },
+        {
+          "path": "long_documents/<subset>-00000-of-00001.parquet",
+          "note": "只有 8 个子集有长文档版本"
+        },
+        {
+          "path": "gpt4_reason/<subset>-00000-of-00001.parquet",
+          "note": "另有 claude-3-opus、Gemini-1.0、grit、llama3-70b 四个同构配置"
+        }
+      ],
+      "text_source": {
+        "kind": "parquet",
+        "file": "documents/<subset>-00000-of-00001.parquet",
+        "id_field": "id",
+        "text_fields": [
+          "content"
+        ],
+        "note": "候选正文在 documents；examples 里是 query、reasoning、gold_ids。"
+      },
+      "notes": "12 个子集：aops、biology、earth_science、economics、leetcode、pony、psychology、robotics、stackoverflow、sustainable_living、theoremqa_questions、theoremqa_theorems。逐子集统计，不合并。",
+      "configs": [
+        {
+          "config_id": "bright-reasonir-top100",
+          "papers": [
+            "E2Rank (2025-10)",
+            "ReasonRank (ACL 2026)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "subsets": [
+            "aops",
+            "biology",
+            "earth_science",
+            "economics",
+            "leetcode",
+            "pony",
+            "psychology",
+            "robotics",
+            "stackoverflow",
+            "sustainable_living",
+            "theoremqa_questions",
+            "theoremqa_theorems"
+          ],
+          "sample_source": {
+            "kind": "parquet",
+            "file": "documents/<subset>-00000-of-00001.parquet",
+            "unit_field": "content"
+          },
+          "query": {
+            "file": "examples/<subset>-00000-of-00001.parquet",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "id",
+            "note": "12 个子集分别统计"
+          },
+          "n_to_k": {
+            "text": "100 -> 100（top 20 构造 prompt）",
+            "n": 100,
+            "k": 100,
+            "status": "declared"
+          },
+          "candidate": {
+            "source": "ReasonIR 检索 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate",
+            "note": "候选 run 未公开"
+          },
+          "qrels": {
+            "file": "examples/<subset>-00000-of-00001.parquet#gold_ids",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "测试集",
+          "record_name": "BRIGHT",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "parquet",
+            "file": "documents/<subset>-00000-of-00001.parquet",
+            "id_field": "id",
+            "text_fields": [
+              "content"
+            ],
+            "note": "候选正文在 documents；examples 里是 query、reasoning、gold_ids。"
+          }
+        },
+        {
+          "config_id": "bright-bm25-top100",
+          "papers": [
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "document",
+          "subsets": [
+            "aops",
+            "biology",
+            "earth_science",
+            "economics",
+            "leetcode",
+            "pony",
+            "psychology",
+            "robotics",
+            "stackoverflow",
+            "sustainable_living",
+            "theoremqa_questions",
+            "theoremqa_theorems"
+          ],
+          "sample_source": {
+            "kind": "parquet",
+            "file": "documents/<subset>-00000-of-00001.parquet",
+            "unit_field": "content"
+          },
+          "query": {
+            "file": "examples/<subset>-00000-of-00001.parquet",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "id"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "window 20，10 次调用"
+          },
+          "candidate": {
+            "source": "BM25 top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "examples/<subset>-00000-of-00001.parquet#gold_ids",
+            "positive_threshold": ">0",
+            "status": "measured"
+          },
+          "record_type": "测试集",
+          "record_name": "BRIGHT",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "parquet",
+            "file": "documents/<subset>-00000-of-00001.parquet",
+            "id_field": "id",
+            "text_fields": [
+              "content"
+            ],
+            "note": "候选正文在 documents；examples 里是 query、reasoning、gold_ids。"
+          }
+        }
+      ]
+    },
+    "r2med": {
+      "display_name": "R2MED",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "R2MED"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/r2med",
+      "source": {
+        "url": "https://huggingface.co/datasets/R2MED/R2MED",
+        "paper": "Zhang et al., R2MED, arXiv 2025"
+      },
+      "files": [
+        {
+          "path": "<subset>/corpus.jsonl",
+          "min_files": 8
+        },
+        {
+          "path": "<subset>/query.jsonl",
+          "min_files": 8
+        },
+        {
+          "path": "<subset>/qrels.jsonl",
+          "min_files": 8
+        },
+        {
+          "path": "<subset>/hyde/<model>/query_with_hydoc.jsonl",
+          "note": "基线用，第二阶段统计不需要",
+          "min_files": 8
+        }
+      ],
+      "text_source": {
+        "kind": "jsonl",
+        "file": "<subset>/corpus.jsonl",
+        "id_field": "id",
+        "text_fields": [
+          "text"
+        ]
+      },
+      "query_source": {
+        "kind": "jsonl",
+        "file": "<subset>/query.jsonl",
+        "id_field": "id",
+        "text_field": "text"
+      },
+      "qrels_source": {
+        "kind": "jsonl",
+        "file": "<subset>/qrels.jsonl",
+        "fields": {
+          "qid": "q_id",
+          "docid": "p_id",
+          "rel": "score"
+        }
+      },
+      "notes": "8 个子集：Bioinformatics、Biology、IIYi-Clinical、Medical-Sciences、MedQA-Diag、MedXpertQA-Exam、PMC-Clinical、PMC-Treatment。逐子集统计，不合并。",
+      "configs": [
+        {
+          "config_id": "r2med-test",
+          "papers": [
+            "Zhang et al., R2MED (arXiv 2025)"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "passage",
+          "subsets": [
+            "Bioinformatics",
+            "Biology",
+            "IIYi-Clinical",
+            "Medical-Sciences",
+            "MedQA-Diag",
+            "MedXpertQA-Exam",
+            "PMC-Clinical",
+            "PMC-Treatment"
+          ],
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "<subset>/corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "<subset>/query.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "id",
+            "note": "query.jsonl 里另有 doc_id 字段标注正例"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na",
+            "note": "数据集只给语料和 qrels，不规定重排 N->K"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate",
+            "note": "无候选 run，按各子集 corpus 规模标 *"
+          },
+          "qrels": {
+            "file": "<subset>/qrels.jsonl",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": "q_id",
+              "docid": "p_id",
+              "rel": "score"
+            }
+          },
+          "record_type": "测试集",
+          "record_name": "R2MED",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "jsonl",
+            "file": "<subset>/corpus.jsonl",
+            "id_field": "id",
+            "text_fields": [
+              "text"
+            ]
+          }
+        },
+        {
+          "config_id": "r2med-reasonrank-e5-mistral",
+          "papers": [
+            "ReasonRank (ACL 2026)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "passage",
+          "subsets": [
+            "Bioinformatics",
+            "Biology",
+            "IIYi-Clinical",
+            "Medical-Sciences",
+            "MedQA-Diag",
+            "MedXpertQA-Exam",
+            "PMC-Clinical",
+            "PMC-Treatment"
+          ],
+          "sample_source": {
+            "kind": "jsonl",
+            "file": "<subset>/corpus.jsonl",
+            "unit_field": "text"
+          },
+          "query": {
+            "file": "<subset>/query.jsonl",
+            "count": null,
+            "count_status": "measured",
+            "id_field": "id"
+          },
+          "n_to_k": {
+            "text": "100 -> 100",
+            "n": 100,
+            "k": 100,
+            "status": "declared",
+            "note": "E5-Mistral-7B-Instruct top 100，用原 query 重排"
+          },
+          "candidate": {
+            "source": "E5-Mistral-7B-Instruct top 100",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "estimate"
+          },
+          "qrels": {
+            "file": "<subset>/qrels.jsonl",
+            "positive_threshold": ">0",
+            "status": "measured",
+            "fields": {
+              "qid": "q_id",
+              "docid": "p_id",
+              "rel": "score"
+            }
+          },
+          "record_type": "测试集",
+          "record_name": "R2MED",
+          "pool_scope": "full_corpus",
+          "text_source": {
+            "kind": "jsonl",
+            "file": "<subset>/corpus.jsonl",
+            "id_field": "id",
+            "text_fields": [
+              "text"
+            ]
+          }
+        }
+      ]
+    },
+    "mteb_english": {
+      "display_name": "MTEB English",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "MTEB English"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/mteb_english",
+      "source": {
+        "url": "https://docs.mteb.org/",
+        "paper": "Muennighoff et al., MTEB, EACL 2023"
+      },
+      "files": [
+        {
+          "path": "<HF_DATASETS_CACHE>",
+          "note": "由 mteb 2.20.10 按 task 自动下载，没有固定文件清单"
+        }
+      ],
+      "text_source": {
+        "kind": "mteb_task",
+        "note": "每个 task 的字段不同，由 mteb 的 loader 决定；只有 retrieval / reranking 类 task 才有候选池和 qrels。"
+      },
+      "notes": "v1 为 56 个 task，v2 为 41 个 task。非检索类 task 的第 2、3、4 项只能填不适用。",
+      "configs": [
+        {
+          "config_id": "mteb-eng-v1",
+          "papers": [
+            "E2Rank (2025-10)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "varies",
+          "sample_source": {
+            "kind": "mteb_task",
+            "note": "按 task 逐个取，样本单位随 task 变化"
+          },
+          "query": {
+            "file": null,
+            "count_status": "unknown",
+            "note": "56 个 task，query 数需逐 task 实测"
+          },
+          "n_to_k": {
+            "text": "逐 task 不同",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "na",
+            "note": "非检索 task 无候选池"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na",
+            "note": "逐 task 的官方评测 split"
+          },
+          "record_type": "测试集",
+          "record_name": "MTEB English",
+          "pool_scope": "candidate_union",
+          "task_count": 56
+        },
+        {
+          "config_id": "mteb-eng-v2",
+          "papers": [
+            "E2Rank (2025-10)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "varies",
+          "sample_source": {
+            "kind": "mteb_task"
+          },
+          "query": {
+            "file": null,
+            "count_status": "unknown",
+            "note": "41 个 task"
+          },
+          "n_to_k": {
+            "text": "逐 task 不同",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "na"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na"
+          },
+          "record_type": "测试集",
+          "record_name": "MTEB English",
+          "pool_scope": "candidate_union",
+          "task_count": 41
+        }
+      ]
+    },
+    "auxiliary_math": {
+      "display_name": "AIME 2024 / AMC 2023（辅助推理评测）",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "AIME 2024 / AMC 2023（辅助推理评测）"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": false,
+      "status": "downloaded",
+      "path": "../ir_data/datasets/auxiliary_math",
+      "source": {
+        "url": "https://huggingface.co/datasets/math-ai/aime24",
+        "note": "不是 IR 数据集，仅 ReaRank 的数学推理迁移实验使用。"
+      },
+      "files": [
+        {
+          "path": "aime24/test-00000-of-00001.parquet",
+          "bytes": 11183
+        },
+        {
+          "path": "amc23/test-00000-of-00001.parquet",
+          "bytes": 11935
+        }
+      ],
+      "text_source": {
+        "kind": "parquet",
+        "file": "aime24/test-*.parquet",
+        "id_field": "id",
+        "text_fields": [
+          "problem"
+        ],
+        "note": "AMC23 的题面字段叫 question"
+      },
+      "notes": "AIME24 共 30 题，AMC23 共 40 题。没有候选池、qrels 和 N->K，第 2、3、4 项一律不适用，只统计题面长度。",
+      "configs": [
+        {
+          "config_id": "aime24",
+          "papers": [
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "question",
+          "sample_source": {
+            "kind": "question",
+            "file": "aime24/test-*.parquet",
+            "id_field": "id",
+            "text_fields": [
+              "problem"
+            ]
+          },
+          "query": {
+            "count": 30,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "na"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na",
+            "note": "温度 0.7，每题采样 16 次，报告平均 pass@1"
+          },
+          "record_type": "测试集",
+          "record_name": "AIME 2024 / AMC 2023（辅助推理评测）",
+          "pool_scope": "na",
+          "note": "辅助数学推理，不是 IR 候选；长度为题面参考"
+        },
+        {
+          "config_id": "amc23",
+          "papers": [
+            "REARANK (EMNLP 2025)"
+          ],
+          "paper_role": "method",
+          "split": "test",
+          "sample_unit": "question",
+          "sample_source": {
+            "kind": "question",
+            "file": "amc23/test-*.parquet",
+            "id_field": "id",
+            "text_fields": [
+              "question"
+            ]
+          },
+          "query": {
+            "count": 40,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "不适用",
+            "n": null,
+            "k": null,
+            "status": "na"
+          },
+          "candidate": {
+            "source": null,
+            "run_file": null,
+            "pool": null,
+            "pool_status": "na"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "na",
+            "note": "温度 0.7，每题采样 16 次，报告平均 pass@1"
+          },
+          "record_type": "测试集",
+          "record_name": "AIME 2024 / AMC 2023（辅助推理评测）",
+          "pool_scope": "na",
+          "note": "辅助数学推理，不是 IR 候选；长度为题面参考"
+        }
+      ]
+    },
+    "mirage": {
+      "display_name": "MIRAGE",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "MIRAGE"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/mirage",
+      "source": {
+        "url": "https://github.com/gzxiong/MIRAGE",
+        "paper": "Xiong et al., Findings of ACL 2024"
+      },
+      "files": [
+        {
+          "path": "benchmark.json",
+          "approx_bytes": 4300000,
+          "extract": "none",
+          "note": "随 git clone 取得"
+        }
+      ],
+      "text_source": {
+        "kind": "json",
+        "file": "benchmark.json",
+        "text_fields": [
+          "question"
+        ],
+        "note": "7,663 个医学 QA 问题，汇总 MMLU-Med、MedQA-US、MedMCQA、PubMedQA、BioASQ。"
+      },
+      "notes": "官方 Top-10K 候选包链接已失效，候选池暂时无法统计；需要用 MedRAG 重新检索才能补齐。",
+      "configs": [
+        {
+          "config_id": "mirage-test",
+          "papers": [
+            "Xiong et al., MIRAGE (Findings of ACL 2024)"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "passage",
+          "sample_source": {
+            "kind": "derived",
+            "note": "候选为 MedCorp 检索出的 snippet，官方 Top-10K 包链接失效，暂无法取得"
+          },
+          "query": {
+            "file": "benchmark.json",
+            "count": 7663,
+            "count_status": "declared"
+          },
+          "n_to_k": {
+            "text": "10000 -> 10",
+            "n": 10000,
+            "k": 10,
+            "status": "declared",
+            "note": "论文用 Top-10K 候选；本次统计无法覆盖"
+          },
+          "candidate": {
+            "source": "MedCorp 检索",
+            "run_file": null,
+            "pool": 54200000,
+            "pool_status": "estimate",
+            "note": "MedCorp 约 5,420 万 snippets，不是实际候选并集"
+          },
+          "qrels": {
+            "file": null,
+            "positive_threshold": ">0",
+            "status": "unknown",
+            "note": "benchmark 内含答案字段，候选 qrels 需从候选包取得"
+          },
+          "record_type": "测试集",
+          "record_name": "MIRAGE",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    },
+    "pmc_patients_recds": {
+      "display_name": "PMC-Patients / ReCDS",
+      "record_rows": [
+        {
+          "type": "测试集",
+          "name": "PMC-Patients / ReCDS"
+        }
+      ],
+      "language": [
+        "en"
+      ],
+      "medical": true,
+      "status": "not_downloaded",
+      "path": "../ir_data/datasets/pmc_patients_recds",
+      "source": {
+        "url": "https://figshare.com/collections/PMC-Patients/6723465",
+        "paper": "Zhao et al., PMC-Patients, 2023"
+      },
+      "files": [
+        {
+          "path": "PMC-Patients.json.tar.gz",
+          "approx_bytes": 204600000,
+          "extract": "tar.gz"
+        },
+        {
+          "path": "ReCDS_benchmark.tar.gz",
+          "approx_bytes": 6532000000,
+          "extract": "tar.gz",
+          "note": "候选池统计必须要这个文件"
+        },
+        {
+          "path": "Meta_data.tar.gz",
+          "approx_bytes": 41800000,
+          "extract": "tar.gz"
+        }
+      ],
+      "text_source": {
+        "kind": "json",
+        "file": "PMC-Patients.json",
+        "id_field": "patient_uid",
+        "text_fields": [
+          "patient",
+          "title"
+        ],
+        "note": "候选文为患者摘要与文章摘要，两类任务分别统计"
+      },
+      "notes": "两类任务：patient-to-article 和 patient-to-patient。只有 195MB 的患者数据不够，必须解压 ReCDS benchmark 才能取到候选。",
+      "configs": [
+        {
+          "config_id": "recds-test",
+          "papers": [
+            "Zhao et al., PMC-Patients (2023)"
+          ],
+          "paper_role": "dataset",
+          "split": "test",
+          "sample_unit": "document",
+          "sample_source": {
+            "kind": "derived",
+            "note": "patient-to-article 与 patient-to-patient 两类，需解压 ReCDS_benchmark.tar.gz 后确认字段"
+          },
+          "query": {
+            "file": "ReCDS_benchmark.tar.gz",
+            "count": null,
+            "count_status": "measured"
+          },
+          "n_to_k": {
+            "text": "未说明",
+            "n": null,
+            "k": null,
+            "status": "unknown"
+          },
+          "candidate": {
+            "source": "ReCDS benchmark",
+            "run_file": null,
+            "pool": null,
+            "pool_status": "unknown"
+          },
+          "qrels": {
+            "file": "ReCDS_benchmark.tar.gz",
+            "positive_threshold": ">0",
+            "status": "unknown"
+          },
+          "record_type": "测试集",
+          "record_name": "PMC-Patients / ReCDS",
+          "pool_scope": "candidate_union"
+        }
+      ]
+    }
+  },
+  "reference_repos": [
+    {
+      "name": "fullrank",
+      "url": "https://github.com/RUC-NLPIR/fullrank",
+      "why": "训练数据只有 qid 和 doc id 列表，构造说明和脚本在这里",
+      "feeds": [
+        "fullrank_training_data / fullrank-train-1k"
+      ]
+    },
+    {
+      "name": "bergen",
+      "url": "https://github.com/naver/bergen",
+      "why": "RRK 的训练与评测配置，以及 PISCO compressor 的实现",
+      "feeds": [
+        "msmarco_passage_v1 / rrk 相关配置",
+        "beir / beir-12"
+      ]
+    },
+    {
+      "name": "ResRank",
+      "url": "https://github.com/Quark-Medical/ResRank",
+      "why": "两阶段训练数据未发布，只能从项目页确认口径",
+      "feeds": [
+        "unpublished / ResRank 训练集"
+      ]
+    },
+    {
+      "name": "MIRAGE",
+      "url": "https://github.com/gzxiong/MIRAGE",
+      "why": "医学 RAG benchmark 与 MedRAG 检索代码，Top-10K 候选包缺失时的替代路径",
+      "feeds": [
+        "mirage / mirage-test"
+      ]
+    },
+    {
+      "name": "tripclick",
+      "url": "https://github.com/tripdatabase/tripclick",
+      "why": "从 click log 构造 benchmark 的代码，用于确认 HEAD/TORSO/TAIL 与 RAW/DCTR 的定义",
+      "feeds": [
+        "tripclick / tripclick-raw-train",
+        "tripclick / tripclick-raw-test"
+      ]
+    },
+    {
+      "name": "beir",
+      "url": "https://github.com/beir-cellar/beir",
+      "why": "Robust04 与 TREC-News 的 BEIR 处理方式，说明子集如何从原始语料生成",
+      "feeds": [
+        "beir / beir-7",
+        "beir / beir-8",
+        "beir / beir-12"
+      ]
+    },
+    {
+      "name": "echo-embeddings",
+      "url": "https://github.com/jakespringer/echo-embeddings",
+      "why": "Echo E5 训练数据的组成与语言分布",
+      "feeds": [
+        "echo_e5_training_data / e2rank-stage1-1509697"
+      ]
+    },
+    {
+      "name": "KILT",
+      "url": "https://github.com/facebookresearch/KILT",
+      "why": "KILT 语料的下载与切分脚本，确认 passage 的存储单位",
+      "feeds": [
+        "kilt_wikipedia_passages / c2r-compressor-pretrain"
+      ]
+    },
+    {
+      "name": "atlas",
+      "url": "https://github.com/facebookresearch/atlas",
+      "why": "Atlas 语料下载脚本；实际下载已经用到这个仓库",
+      "feeds": [
+        "atlas_wikipedia_2020_12 / perank-alignment-atlas-2m"
+      ]
+    },
+    {
+      "name": "pmc-patients",
+      "url": "https://github.com/pmc-patients/pmc-patients",
+      "why": "ReCDS 两类任务的字段和评测方式说明",
+      "feeds": [
+        "pmc_patients_recds / recds-test"
+      ]
+    }
+  ],
+  "unpublished": [
+    {
+      "record_row": {
+        "type": "训练集",
+        "name": "LongRanker 10K 训练集"
+      },
+      "paper": "LongRanker (WWW 2026)",
+      "base_dataset": "msmarco_passage_v1",
+      "reason": "从 MS MARCO train 随机抽 10k queries，用 DeepSeek-V3.2-Exp 生成排序标签；派生数据与完整构造代码均未发布。",
+      "how_to_report": "query 数、N->K 按论文写；候选池和正样本标 unknown；token/word 只能统计 MS MARCO 公开部分并注明范围。"
+    },
+    {
+      "record_row": {
+        "type": "训练集",
+        "name": "ResRank 训练集"
+      },
+      "paper": "ResRank (2026-04)",
+      "base_dataset": "pe_rank_training_data + e2rank_ranking_datasets",
+      "reason": "Stage 1 = PE-Rank 232,419 条、Stage 2 = E2Rank 来源约 87K 条，两阶段均由 Qwen3-Max 重标注；重标注结果未发布。",
+      "how_to_report": "基础数据的规模可统计；重标注后的 qrels 与候选必须标 unknown，不能用基础数据替代。"
+    },
+    {
+      "record_row": {
+        "type": "训练集",
+        "name": "RRK 训练集"
+      },
+      "paper": "Efficient Listwise Reranking with Compressed Document Representations / RRK (arXiv 2026-04)",
+      "base_dataset": "msmarco_passage_v1 + e2rank_ranking_datasets",
+      "reason": "0.50M MS MARCO + 0.15M E2Rank 来源，每条 16 篇，MS MARCO 部分从教师 top 50 随机抽样；未发布数据或完整构造代码。",
+      "how_to_report": "同上，只能统计基础数据。"
+    }
+  ]
+}

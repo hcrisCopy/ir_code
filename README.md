@@ -6,28 +6,41 @@
 
 ## 第二阶段总流程
 
-1. **数据准备**：下载公开数据、办理申请、登记未公开数据。
-2. **使用配置**：逐篇记录实际 split、候选来源、输入数量和输出数量。
-3. **数据解析**：把不同格式统一映射为 query、candidate、qrels 和 run。
-4. **指标统计**：计算老师要求的 7 类指标。
-5. **结果核验**：检查数量、抽样内容、缺失字段和带 `*` 的估算值。
-6. **结果交付**：输出可回填表格的 CSV/JSON，并保留统计口径和运行记录。
+```text
+A 数据准备    下载 / 申请 / 解压            check_data.py + extract_data.py
+B 使用配置    configs/manifest.json        人工维护，脚本只读
+C 查看样本    inspect_data.py              打印一条真实数据，确认样本单位
+D 指标统计    count_basic.py（第 1-4 项） + count_lengths.py（第 5-7 项）
+E 汇总核验    merge_results.py             ../ir_data/outputs/*.csv
+F 结果交付    回填 record.xlsx
+```
 
-当前先完成第 1 步。后续代码和结果按本文后半部分的接口继续添加，不另起一套目录。
+当前阶段：数据上传与逐数据集统计并行进行。文件齐全、配置范围正确且结果状态 complete，才可回填。
 
 ## 目录约定
 
 ```text
 项目根目录/
-├── ir_code/                 # 下载说明、统计代码和输出
-├── Qwen/                    # Qwen tokenizer / 模型
-└── ir_data/
-    ├── DATASET_INDEX.md     # record.xlsx 名称与实际目录的对照表
-    ├── datasets/            # 真正的数据；每套底层数据只保存一份
-    ├── application/         # 申请表、填写说明和邮件模板
-    ├── _cache/              # Hugging Face、ir_datasets 等工具缓存
-    └── _tools/              # 仅放下载或预处理工具，不放数据
+├── ir_code/                   # 代码，独立 git 仓库，所有命令在这里执行
+│   ├── README.md              # 本文件
+│   ├── requirements.txt
+│   ├── download_datasets.py   # A2.3-A2.14 下载
+│   ├── configs/manifest.json  # 配置中心，人工维护
+│   ├── scripts/               # 统计代码
+│   └── reference/             # 论文官方仓库（只作证据，不参与统计）
+├── Qwen/Qwen3-1.7B/           # tokenizer
+└── ir_data/                   # 数据与统计产物，整包上传服务器就用这一份
+    ├── DATASET_INDEX.md       # record.xlsx 名称与实际目录的对照表
+    ├── datasets/              # 真正的数据；每套底层数据只保存一份
+    ├── outputs/               # 统计结果，全部产物都在这里
+    ├── application/           # 申请表、填写说明和邮件模板
+    ├── _cache/                # Hugging Face、ir_datasets 等工具缓存
+    └── _tools/                # 仅放下载或预处理工具，不放数据
 ```
+
+代码和数据分开：`ir_code/` 可以单独打包传服务器，`ir_data/` 整包上传，两边都不用改路径。
+
+所有命令都在 `ir_code/` 目录下执行，路径一律相对项目根目录。
 
 数据目录统一使用 `../ir_data/datasets/<规范名称>/`。规范名称和表格行的对应关系见 [`../ir_data/DATASET_INDEX.md`](../ir_data/DATASET_INDEX.md)。
 
@@ -50,9 +63,11 @@ conda activate ir_stats
 python -m pip install -U pip
 python -m pip install -r requirements.txt
 
-conda install -c conda-forge -y git git-lfs wget jq unzip openjdk=21
+conda install -c conda-forge -y git git-lfs wget jq openjdk=21
 git lfs install
 ```
+
+Windows 上 `unzip` 和 `aria2` 在 conda-forge 的 win-64 平台没有包，直接不装：`unzip` 用不到（下载脚本自带解压），`aria2` 按 A2.0 单独装。
 
 这里不配置 GPU 版 PyTorch。Pyserini 的依赖可能会带入 CPU 版 PyTorch，但第二阶段的文本统计不加载模型权重；如果后面要运行模型，再按服务器 CUDA 版本单独配置 GPU 版 PyTorch。
 
@@ -82,6 +97,50 @@ modelscope download --model Qwen/Qwen3-1.7B --local_dir ../Qwen/Qwen3-1.7B
 ```
 
 ### A2. 可直接下载的数据
+
+下载统一用 `download_datasets.py`：默认**多连接分片 + 断点续传 + 下载后自动校验**，不需要装任何外部下载器。
+
+```bash
+python download_datasets.py --list                      # 看有哪些任务
+python download_datasets.py A2.3                        # 下单个
+python download_datasets.py --all --yes --no-extract    # 全下，先不解压
+```
+
+`--no-extract` 建议留着，解压交给 ② `extract_data.py` 统一做（它会校验通过才删压缩包）。
+
+#### 下载速度怎么调
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `--connections N` | 16 | 每个文件切成 N 个分片并行下。慢的时候先加这个，最大 64 |
+| `--files-in-parallel N` | 4 | 同一个任务里同时下几个文件（例如 BEIR 的 12 个 zip），最大 16 |
+| `--use-aria2` | 关 | 改用 aria2c。只有在装了 aria2、且这个地址能连通时才更快 |
+
+```bash
+# 单文件慢，就加连接数
+python download_datasets.py A2.5 --connections 32
+
+# 一堆小文件慢，就加并发文件数
+python download_datasets.py A2.10 --files-in-parallel 8
+```
+
+中断后**重跑同一条命令即可续传**，连分片级别都不用重下。只有文件明确损坏时才加 `--repair`（它会删掉该文件的所有分片和 `.part`）。
+
+#### A2.0 aria2 是可选项
+
+aria2 现在不是必需的。Windows 版 aria2 连 MS MARCO 的 Azure 地址会 TLS 握手失败，而内置的多连接下载器没有这个问题，所以默认走内置。确实要用的话（例如某些 HF 镜像）：
+
+```powershell
+$ToolDir = "../ir_data/_tools/aria2"
+New-Item -ItemType Directory -Force -Path $ToolDir | Out-Null
+curl.exe -L --fail -o "$ToolDir/aria2.zip" "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip"
+Expand-Archive -LiteralPath "$ToolDir/aria2.zip" -DestinationPath $ToolDir -Force
+$Exe = Get-ChildItem -Path $ToolDir -Filter "aria2c.exe" -Recurse | Select-Object -First 1
+Copy-Item -LiteralPath $Exe.FullName -Destination "$env:CONDA_PREFIX/Scripts/aria2c.exe" -Force
+aria2c --version
+```
+
+装好后加 `--use-aria2` 才会用；aria2 失败仍会自动回退到内置下载器。
 
 #### A2.1 Hugging Face 数据包
 
@@ -486,7 +545,7 @@ mkdir -p ../ir_data/datasets/tripclick
 
 申请难度：中等。需要单位负责人签署组织协议；NIST 说明通常在 7 个工作日内回复。
 
-若只为推进第二阶段统计，可先使用 1.11 节的公开 BEIR Lucene 索引；该索引含正文，但不替代本节的官方数据许可。
+若只为推进第二阶段统计，可先使用 A2.11 的公开 BEIR Lucene 索引；该索引含正文，但不替代本节的官方数据许可。
 
 1. 打开 [TREC Disks 4 and 5](https://trec.nist.gov/data/cd45/)。
 2. 填写并签署组织协议；个人协议由实际使用者签署并由单位留存。
@@ -498,7 +557,7 @@ mkdir -p ../ir_data/datasets/tripclick
 
 申请难度：中等。流程与 Robust04 类似，同样需要单位签字；NIST 说明通常在 7 个工作日内回复。
 
-若只为推进第二阶段统计，可先使用 1.11 节的公开 BEIR Lucene 索引；该索引含正文，但不是官方 `WashingtonPost.v2.tar.gz`，也不替代本节的数据许可。
+若只为推进第二阶段统计，可先使用 A2.11 的公开 BEIR Lucene 索引；该索引含正文，但不是官方 `WashingtonPost.v2.tar.gz`，也不替代本节的数据许可。
 
 1. 打开 [TREC Washington Post Corpus](https://trec.nist.gov/data/wapost/)。
 2. 填写 [Organization Application](https://trec.nist.gov/data/wapost/Organization%20Application.pdf)。
@@ -519,115 +578,97 @@ mkdir -p ../ir_data/datasets/tripclick
 ### A5. 下载后检查
 
 ```bash
-du -sh ../ir_data/datasets/* | sort -h
-find ../ir_data/datasets -maxdepth 4 -type f | sort > download_file_list.txt
+cd ir_code
+python scripts/check_data.py --all          # 对照 manifest 的期望文件逐项核对
+du -sh ../ir_data/datasets/* | sort -h      # 只看体积
 ```
 
-`download_file_list.txt` 放在 `ir_code/`，便于后续记录实际取得的文件。对 TripClick 应按官网给出的 MD5 校验；对 Hugging Face 数据，后续在统计结果中记录仓库 revision。
+`check_data.py` 会比对每个数据集的期望文件、大小和 MD5（期望值写在 `configs/manifest.json` 的 `files` 里），把明细写入 `../ir_data/outputs/inventory.csv`，并在结尾分出「齐全」和「还缺」两栏。`../ir_data/DATASET_INDEX.md` 的状态列以它的输出为准。
 
-## B. 论文使用配置
+## B. 总配置 JSON
 
-统计单位不是“数据集名称”本身，而是“论文 × 数据集 × split”。同一个数据集被不同论文使用时，split、候选检索器、输入数量和输出数量可能不同，不能共用一条配置。
+`configs/manifest.json` 人工维护，脚本只读。每个数据集保存一份底层数据，其下的 `configs` 分别记录论文、split、子集、候选来源、N→K、正例字段和回填行。同一数据集的不同用法不能因候选数量相同而合并。
 
-后续建立两个配置文件：
+- `usage_scope=unknown_subset`：缺论文实际子集，只保留声明，不拿全集替代。
+- `usage_scope=public_release`：公开文件参考结果，和论文抽样/训练阶段结果分开。
+- `pool_scope=candidate_union/full_corpus/author_pool/na`：明确池范围；全语料替代候选并集时标星，即使数值是实测。
+- `record_type/record_name`：明确对应工作簿哪一行，防止 train/test 和不同年份混写。
+- 正例字段可为独立 qrels、`relevant_docids` 或指定的 `pos_index`，不能把排序第一名或 BM25 分数当相关性标注。
 
-```text
-configs/
-├── datasets.yaml       # 数据物理路径、字段、可用 split、语言
-└── experiments.yaml    # 论文实际使用的 split、候选 run、N→K 和样本单位
+每项保留 measured / declared / estimate / unknown / na。未公开、正在上传、缺文件和不适用分别记录，不能都写零。
+
+## C. 服务器执行
+
+在 `ir_code/` 下执行；`../ir_data/` 和 `../Qwen/` 与代码目录同级。只加载 tokenizer，不加载模型权重，不需要 GPU。
+
+```bash
+conda activate ir_stats
+python -m pip install -r requirements-stats.txt
+
+# 第一次先核对文件；缺文件会返回非零，明细保存在 inventory.csv
+python scripts/check_data.py --all
+
+# 逐数据集解压，完成清单核对通过才删除原包
+python scripts/extract_data.py --dataset rearank_12k --dry-run
+python scripts/extract_data.py --dataset rearank_12k
+# 加 --keep-archive 保留原包；无需解压的 parquet/jsonl 或 keep 包会跳过
+
+# 看一条原始记录和解析后的候选
+python scripts/inspect_data.py --dataset rearank_12k --config rearank-12k
+
+# 分别计算第 1–4 项、第 5–7 项，再汇总
+python scripts/count_basic.py --dataset rearank_12k
+python scripts/count_lengths.py --dataset rearank_12k
+python scripts/merge_results.py
+
+# 自动逐个处理当前已上传的目录，支持重跑恢复
+python scripts/run_available.py
+# 只处理指定的数据集
+python scripts/run_available.py --dataset rearank_12k r2med
 ```
 
-`datasets.yaml` 每项至少记录：
+数量和长度入口都支持 `--dataset`、`--config`、`--all`、`--list`。长度入口支持 `--tokenizer ../Qwen/Qwen3-1.7B` 和 `--limit 100`；limit 结果只写 debug 目录。`--no-token` 仅算 word。解压入口支持 `--dataset/--all/--dry-run/--keep-archive`；汇总入口用 `--preview` 控制预览。
 
-- 表格中的正式名称和 `DATASET_INDEX.md` 中的规范路径；
-- query、corpus、qrels、run 文件位置及字段映射；
-- 可用 split、数据语言、是否需要解压或从 Lucene 导出；
-- 数据版本、下载日期和 revision/checksum。
-
-`experiments.yaml` 每项至少记录：
-
-- 论文、数据集、split 和论文实际使用的 query 子集；
-- 候选来源及候选 run 文件；
-- 每个 query 输入多少个样本、最终输出多少个；
-- 样本单位是 passage、document、paper 还是其他文本单元；
-- 正样本判定规则，例如 `relevance > 0`；
-- 论文未说明或文件未公开的字段，明确写 `unknown`，不自行补值。
-
-这里的“样本单位”以**使用该数据集的论文实际送入排序模型的单位**为准，不以数据集原论文的存储单位为准。
-
-## C. 数据解析与统一视图
-
-不同数据保持原文件不动。解析脚本只读取 `../ir_data/datasets/`，在运行时统一为下面四类记录：
-
-```text
-query:     query_id, query_text, split, language
-candidate: doc_id, text, title, language
-qrel:      query_id, doc_id, relevance
-run:       paper_id, dataset_id, query_id, doc_id, rank, score
+```bash
+# 本地推送后，服务器只同步代码，不改数据目录
+source /etc/network_turbo
+git pull --ff-only
 ```
 
-计划脚本：
+参考仓库保存在 `reference/`，索引见 `reference/REPOS.md`。需要时运行 `python scripts/clone_reference.py --all`；克隆代码不提交 GitHub。
 
-```text
-scripts/
-├── inventory.py          # 检查下载、版本、文件数量和大小
-├── validate_config.py    # 检查路径、split、字段和重复配置
-├── build_views.py        # 读取各数据格式，生成统一迭代视图
-├── compute_counts.py     # query、N→K、候选池和正样本统计
-├── compute_lengths.py    # token、word 和分位数统计
-└── merge_results.py      # 合并结果并生成表格文件
+## D. 统计口径
+
+1. Query 按当前设置的实际 query 集去重。论文报告数、公开文件实测数、增强记录数另存；文本去重/记录代理会注明。没有子集名单，不用论文报告规模作全集统计的分母。
+2. N→K 记录待排序候选和输出候选数。query 不计入 N；检索深度、训练抽样数和滑窗另记，nDCG@10 不能自动解释为只输出 10 个。
+3. 候选池是所有 query 候选 ID 的并集。缺原始 ID 时使用正文 SHA256 去重计算长度，正文并集规模作为替代值标星。缺实际 run 时，全 corpus 结果标明替代范围。
+4. 正例按唯一 query–doc 关联计数，阈值按配置执行；分母为同一实际 query 集。指定正例、候选内正例与完整标注池正例分别注明。无标注写未知，不写零。
+5. Token 固定 Qwen3-1.7B，`add_special_tokens=False`、不截断，统计压缩前候选原文；不含 query、指令、编号和输出。标题/正文按配置组合，结果保留 tokenizer 指纹。
+6. Word 仅计中英文：中文每汉字计 1；英文 A–Z 单词保留内部连字符/撇号；数字串计 1；标点不计。优先使用来源语言标签；其他/未知语言排除并报告样本数，token 与 word 各自记录有效分母。
+7. P25/P50/P75/P90 用最近秩法：第 `ceil(p × N)` 个排序长度，不插值。每个子集独立一行；整体分位数不能用某个子集的值或子集分位数平均替代。
+
+主分布按候选 ID 或明确标记的正文哈希去重；对照分布按候选在数据记录中出现的次数加权。SQLite 在磁盘保存候选与长度频数，重复运行按配置更新输出，同一正文可复用长度缓存。编码显示进度条，文件上传中/缺正文/冲突 ID 会产生未就绪或部分结果。
+
+## E. 输出与对接
+
+全部输出在 `../ir_data/outputs/`：
+
+| 文件 | 内容 |
+|---|---|
+| `inventory.csv` | 所有目录的缺失、分片数量、大小与残片检查 |
+| `experiments/*.json` | 每个 config/子集完整结果、状态、样本预览和统计指纹 |
+| `experiment_stats.csv` / `length_stats.csv` | 数量 / 长度明细，重跑按 config/子集更新 |
+| `final_stats.csv` | 全部七项指标及有效样本数、语言、覆盖率 |
+| `by_record_row.csv` | 每个数值带 config/子集标签，便于回填工作簿 |
+| `issues.csv` | 未说明、标星、缺长度、部分统计和未就绪项 |
+| `run_status.json` | 自动流程当前已处理的配置及结果状态 |
+| `cache/*.sqlite` | 磁盘候选、正文、跨配置长度缓存 |
+| `debug/` | limit 调试结果，不覆盖正式汇总 |
+
+回填前核对 `issues.csv`；partial、debug、公开全集参考结果不能当论文精确统计。脚本不自动修改 `record.xlsx`。
+
+服务器边界验证（不读取真实数据集）：
+
+```bash
+python -m unittest discover -s tests -v
 ```
-
-大语料采用流式读取，不复制完整 corpus，也不生成另一份统一大文件。需要缓存的中间结果放 `outputs/cache/`，不能写回原始数据目录。
-
-## D. 指标统计
-
-最终对每条“论文 × 数据集 × split”配置统计：
-
-1. **Query 数量**：论文实际使用的 query 数，不默认使用数据集全部 query。
-2. **输入 N → 输出 K**：以论文实验设置为准，例如 `400 → 10`。若只是对 N 个候选全排序，则写 `N → N`。
-3. **候选池数量**：优先计算该配置下所有 query 候选文档 ID 的并集。只有整个语料库或作者处理的大池子、没有实际 run 时，记录该数值并加 `*`。
-4. **平均正样本数/query**：根据该配置的 qrels 和正样本阈值计算，同时保留无正样本 query 的数量。
-5. **样本 token 数**：使用项目固定的 Qwen3-1.7B tokenizer，对论文实际送入排序模型的文本单元编码。
-6. **样本 word 数**：只统计中文和英文。中文汉字每字计 1 个；英文按 Unicode 单词计数；标点不计，连续数字计 1 个。Echo E5、E2Rank 中已知的其他语言不混入 word 均值和分位数，单独报告语言、样本数和排除原因。
-7. **长度分布**：token 和 word 分别输出 mean、P25、P50、P75、P90。
-
-长度统计默认针对该配置实际进入排序的候选样本；如果候选 run 未公开，只能统计整个 corpus 或公开子集，结果需注明统计范围，不能写成论文实际输入。
-
-## E. 核验与结果文件
-
-结果统一放在 `outputs/`：
-
-```text
-outputs/
-├── inventory.csv              # 数据文件、版本、大小和下载状态
-├── experiment_stats.csv       # 每条论文 × 数据集 × split 的最终统计
-├── length_stats.csv           # token/word 的均值和各分位数
-├── issues.csv                 # 缺失 run、未知 split、估算值等问题
-├── run_metadata.json          # tokenizer、代码版本和运行时间
-└── cache/                     # 可重新生成的中间缓存
-```
-
-每次正式统计至少检查：
-
-- query ID 能否在 qrels 和 run 中对应；
-- candidate ID 能否在 corpus 中找到；
-- 配置中的 N 与实际每个 query 的候选数是否一致；
-- 随机抽查若干 query、正样本和文本内容；
-- 所有 `*`、`unknown` 和缺失数据是否进入 `issues.csv`；
-- 多语言数据是否记录语言，不把所有文本直接当英文分词。
-
-## F. 执行顺序
-
-后续按以下顺序推进：
-
-```text
-A 数据准备
-  → B 填写论文使用配置
-  → C 校验配置并建立统一视图
-  → D 先统计数量，再统计 token/word
-  → E 抽样核验并生成结果文件
-  → 回填 record.xlsx
-```
-
-数据下载完成不代表可以直接统计。若论文实际候选 run 不存在，候选池和长度统计只能按现有范围计算并明确标 `*`；不能拿整个 corpus 冒充论文实际输入。

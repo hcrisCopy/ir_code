@@ -10,24 +10,34 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import math
 import os
 import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import zipfile
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
 import requests
+from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_ROOT = (SCRIPT_DIR / "../ir_data/datasets").resolve()
 DEFAULT_TOOLS_ROOT = (SCRIPT_DIR / "../ir_data/_tools").resolve()
+
+# 小于这个大小就用单连接，分段反而更慢
+PARALLEL_MIN_BYTES = 8 * 1024 * 1024
+# 单段不小于这个大小，避免切得太碎
+MIN_SEGMENT_BYTES = 4 * 1024 * 1024
+CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -37,6 +47,8 @@ class Context:
     connections: int
     repair: bool
     extract: bool
+    files_in_parallel: int = 4
+    use_aria2: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,10 +72,24 @@ def run(command: list[str], *, cwd: Path | None = None, stdout=None) -> None:
 def remove_download_state(path: Path) -> None:
     """Remove one explicitly selected target and its resumable sidecars."""
     candidates = [path, Path(f"{path}.aria2"), Path(f"{path}.part")]
+    candidates.extend(sorted(path.parent.glob(f"{path.name}.dl.*")))
     for candidate in candidates:
         if candidate.exists():
             print(f"[repair] removing incomplete target: {candidate}")
             candidate.unlink()
+
+
+def make_session(connections: int) -> requests.Session:
+    """连接池要够大，否则多线程会被 requests 自己的池子卡住。"""
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=max(connections, 10),
+        pool_maxsize=max(connections * 2, 20),
+        max_retries=0,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def remote_size(url: str, headers: dict[str, str] | None = None) -> int | None:
@@ -73,9 +99,46 @@ def remote_size(url: str, headers: dict[str, str] | None = None) -> int | None:
         )
         response.raise_for_status()
         value = response.headers.get("Content-Length")
-        return int(value) if value else None
+        if value:
+            return int(value)
     except (requests.RequestException, ValueError):
-        return None
+        pass
+    # HEAD 被拒时退回一次只取 1 字节的 GET，从 Content-Range 里读总大小
+    try:
+        with requests.get(
+            url,
+            headers={**(headers or {}), "Range": "bytes=0-0"},
+            stream=True,
+            allow_redirects=True,
+            timeout=(15, 30),
+        ) as response:
+            content_range = response.headers.get("Content-Range", "")
+            if "/" in content_range:
+                tail = content_range.rsplit("/", 1)[-1]
+                if tail.isdigit():
+                    return int(tail)
+            value = response.headers.get("Content-Length")
+            if value and response.status_code == 200:
+                return int(value)
+    except (requests.RequestException, ValueError):
+        pass
+    return None
+
+
+def supports_range(url: str, headers: dict[str, str] | None = None) -> bool:
+    try:
+        with requests.get(
+            url,
+            headers={**(headers or {}), "Range": "bytes=0-0"},
+            stream=True,
+            allow_redirects=True,
+            timeout=(15, 30),
+        ) as response:
+            if response.status_code == 206:
+                return True
+            return response.headers.get("Accept-Ranges", "").lower() == "bytes"
+    except requests.RequestException:
+        return False
 
 
 def verify_hash(path: Path, algorithm: str, expected: str) -> None:
@@ -104,7 +167,7 @@ def requests_download(
     *,
     headers: dict[str, str] | None = None,
 ) -> None:
-    """Single-connection resumable fallback when aria2 is unavailable."""
+    """单连接可续传下载，作为兜底路径。"""
     part = Path(f"{destination}.part")
     downloaded = part.stat().st_size if part.exists() else 0
     request_headers = dict(headers or {})
@@ -122,6 +185,12 @@ def requests_download(
             downloaded = 0
             part.unlink(missing_ok=True)
         response.raise_for_status()
+        if downloaded:
+            content_range = response.headers.get("Content-Range", "")
+            if response.status_code != 206 or not content_range.startswith(
+                f"bytes {downloaded}-"
+            ):
+                raise RuntimeError("Server returned an invalid resume range")
         remaining = int(response.headers.get("Content-Length", 0))
         total = downloaded + remaining if remaining else None
         mode = "ab" if downloaded else "wb"
@@ -133,11 +202,206 @@ def requests_download(
             unit_divisor=1024,
             desc=destination.name,
         ) as progress:
-            for chunk in response.iter_content(chunk_size=4 * 1024 * 1024):
+            for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
                 if chunk:
                     stream.write(chunk)
                     progress.update(len(chunk))
     os.replace(part, destination)
+    # aria2 的分片文件可能有空洞，不能当续传源；这里完成后清掉它的控制文件。
+    Path(f"{destination}.aria2").unlink(missing_ok=True)
+
+
+def _fetch_range(
+    session: requests.Session,
+    url: str,
+    headers: dict[str, str] | None,
+    start: int,
+    end: int,
+    target: Path,
+    progress: tqdm,
+    lock: threading.Lock,
+) -> None:
+    """下载半开区间 [start, end)，可断点续传。end 为排他上界。"""
+    expected = end - start
+    have = target.stat().st_size if target.exists() else 0
+    if have > expected:
+        with target.open("r+b") as stream:
+            stream.truncate(expected)
+        have = expected
+    if have == expected:
+        return
+
+    request_headers = dict(headers or {})
+    request_headers["Range"] = f"bytes={start + have}-{end - 1}"
+    with session.get(
+        url, headers=request_headers, stream=True, allow_redirects=True, timeout=(30, 180)
+    ) as response:
+        if response.status_code == 200 and (start + have) > 0:
+            # 服务器忽略了 Range，分段模式失效，交给调用方回退
+            raise RuntimeError("Server ignored the Range header")
+        if response.status_code not in (200, 206):
+            response.raise_for_status()
+        with target.open("ab") as stream:
+            for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
+                if not chunk:
+                    continue
+                stream.write(chunk)
+                with lock:
+                    progress.update(len(chunk))
+    if target.stat().st_size != expected:
+        raise RuntimeError(
+            f"Segment {start}-{end} incomplete: {target.stat().st_size} != {expected}"
+        )
+
+
+def segmented_download(
+    url: str,
+    destination: Path,
+    *,
+    headers: dict[str, str] | None = None,
+    connections: int = 16,
+    size: int | None = None,
+) -> bool:
+    """多连接分片下载。成功返回 True；服务器不支持分段则返回 False。
+
+    续传方式：`.part` 始终是文件的一段连续前缀；每个分片先落到
+    `.<名字>.dl.<起始偏移>`，按偏移升序拼接进 `.part`，拼完即删。
+    这样中断后连分片级别都不用重下。
+    """
+    if size is None:
+        size = remote_size(url, headers)
+    if not size or size < PARALLEL_MIN_BYTES:
+        return False
+
+    part = Path(f"{destination}.part")
+    merged = part.stat().st_size if part.exists() else 0
+    if merged > size:
+        print(f"[warn] {part.name} 比目标文件还大，丢弃重下")
+        part.unlink(missing_ok=True)
+        merged = 0
+
+    segment_count = max(1, min(connections, size // MIN_SEGMENT_BYTES))
+    segment_length = math.ceil(size / segment_count)
+
+    # 已合并的部分不用管，只下 [merged, size)
+    ranges: list[tuple[int, int]] = []
+    if merged < size:
+        first_index = merged // segment_length
+        ranges.append((merged, min(size, (first_index + 1) * segment_length)))
+        for index in range(first_index + 1, segment_count):
+            start = index * segment_length
+            if start >= size:
+                break
+            ranges.append((start, min(size, start + segment_length)))
+    ranges = sorted(set(ranges))
+
+    if not ranges:
+        if part.stat().st_size == size:
+            os.replace(part, destination)
+            return True
+        return False
+
+    session = make_session(len(ranges))
+    lock = threading.Lock()
+    already = sum(
+        min(path.stat().st_size, end - start)
+        for start, end in ranges
+        if (path := Path(f"{destination}.dl.{start}")).exists()
+    )
+    print(
+        f"[download] {destination.name}: {size / 1024**3:.2f} GiB，"
+        f"{len(ranges)} 个分片并行（已有 {merged / 1024**2:.0f} MiB）"
+    )
+    try:
+        with tqdm(
+            total=size,
+            initial=merged + already,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=destination.name,
+        ) as progress:
+            with ThreadPoolExecutor(max_workers=len(ranges)) as pool:
+                futures = {
+                    pool.submit(
+                        _fetch_range,
+                        session,
+                        url,
+                        headers,
+                        start,
+                        end,
+                        Path(f"{destination}.dl.{start}"),
+                        progress,
+                        lock,
+                    ): (start, end)
+                    for start, end in ranges
+                }
+                for future in as_completed(futures):
+                    future.result()
+    except RuntimeError as error:
+        if "Range" in str(error):
+            print("[fallback] 服务器不支持分段下载，改用单连接。")
+            for start, _ in ranges:
+                Path(f"{destination}.dl.{start}").unlink(missing_ok=True)
+            return False
+        raise
+    finally:
+        session.close()
+
+    # 按偏移升序拼进 .part，拼一个删一个，峰值占用只多一个分片
+    with part.open("ab") as sink:
+        for start, end in ranges:
+            chunk_path = Path(f"{destination}.dl.{start}")
+            if not chunk_path.exists():
+                raise RuntimeError(f"缺少分片文件 {chunk_path.name}")
+            with chunk_path.open("rb") as source:
+                shutil.copyfileobj(source, sink, CHUNK_BYTES)
+            chunk_path.unlink(missing_ok=True)
+
+    if part.stat().st_size != size:
+        raise RuntimeError(
+            f"{part.name} 拼接后大小不对：{part.stat().st_size:,} != {size:,}"
+        )
+    os.replace(part, destination)
+    Path(f"{destination}.aria2").unlink(missing_ok=True)
+    return True
+
+
+def aria2_download(
+    ctx: Context,
+    url: str,
+    destination: Path,
+    headers: dict[str, str] | None = None,
+) -> bool:
+    aria2 = shutil.which("aria2c")
+    if not aria2:
+        return False
+    command = [
+        aria2,
+        "--continue=true",
+        f"--max-connection-per-server={ctx.connections}",
+        f"--split={ctx.connections}",
+        "--min-split-size=1M",
+        "--file-allocation=none",
+        "--max-tries=5",
+        "--retry-wait=3",
+        "--summary-interval=1",
+        "--console-log-level=notice",
+        # Windows 版 aria2 对部分 CDN 会 TLS 握手失败，放宽这两项能救回一部分
+        "--check-certificate=false",
+        "--min-tls-version=TLSv1.2",
+        f"--dir={destination.parent}",
+        f"--out={destination.name}",
+    ]
+    for key, value in (headers or {}).items():
+        command.append(f"--header={key}: {value}")
+    command.append(url)
+    try:
+        run(command)
+    except RuntimeError:
+        print("[fallback] aria2 失败，改用 Python 多连接下载。")
+        return False
+    return True
 
 
 def download(
@@ -153,35 +417,28 @@ def download(
         remove_download_state(destination)
 
     expected_size = remote_size(url, headers)
-    if destination.exists() and expected_size == destination.stat().st_size:
+    if (
+        destination.exists()
+        and expected_size is not None
+        and expected_size == destination.stat().st_size
+        # aria2 会预分配出满大小的稀疏文件，有控制文件就说明其实没下完
+        and not Path(f"{destination}.aria2").exists()
+    ):
         print(f"[skip] complete: {destination.name} ({expected_size:,} bytes)")
     else:
-        aria2 = shutil.which("aria2c")
-        if aria2:
-            command = [
-                aria2,
-                "--continue=true",
-                f"--max-connection-per-server={ctx.connections}",
-                f"--split={ctx.connections}",
-                "--min-split-size=1M",
-                "--file-allocation=none",
-                "--max-tries=0",
-                "--retry-wait=3",
-                "--summary-interval=1",
-                "--console-log-level=notice",
-                f"--dir={destination.parent}",
-                f"--out={destination.name}",
-            ]
-            for key, value in (headers or {}).items():
-                command.append(f"--header={key}: {value}")
-            command.append(url)
-            run(command)
-        else:
-            print(
-                "[warning] aria2c was not found; using the slower requests fallback.\n"
-                "          Install the fast downloader with:\n"
-                "          conda install -c conda-forge aria2 -y"
+        done = False
+        if ctx.use_aria2:
+            done = aria2_download(ctx, url, destination, headers)
+        if not done:
+            done = segmented_download(
+                url,
+                destination,
+                headers=headers,
+                connections=ctx.connections,
+                size=expected_size,
             )
+        if not done:
+            print("[download] 单连接模式（支持断点续传）")
             requests_download(url, destination, headers=headers)
 
     if expected_size is not None and destination.stat().st_size != expected_size:
@@ -191,6 +448,47 @@ def download(
         )
     if checksum:
         verify_hash(destination, checksum[0], checksum[1])
+
+
+@dataclass(frozen=True)
+class FetchItem:
+    url: str
+    destination: Path
+    headers: dict[str, str] | None = None
+    checksum: tuple[str, str] | None = None
+
+
+def download_many(ctx: Context, items: Iterable[FetchItem]) -> None:
+    """一个任务里的多个文件并行下载，谁先好谁先过。"""
+    queue = list(items)
+    if not queue:
+        return
+    workers = max(1, min(ctx.files_in_parallel, len(queue)))
+    if workers == 1:
+        for item in queue:
+            download(ctx, item.url, item.destination, headers=item.headers, checksum=item.checksum)
+        return
+
+    print(f"[parallel] {len(queue)} 个文件，同时下 {workers} 个")
+    errors: list[tuple[Path, BaseException]] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(
+                download, ctx, item.url, item.destination,
+                headers=item.headers, checksum=item.checksum,
+            ): item
+            for item in queue
+        }
+        for future in as_completed(futures):
+            item = futures[future]
+            try:
+                future.result()
+            except BaseException as error:  # noqa: BLE001 - 收集后统一抛出
+                errors.append((item.destination, error))
+                print(f"[error] {item.destination.name}: {error}")
+    if errors:
+        names = ", ".join(path.name for path, _ in errors)
+        raise RuntimeError(f"以下文件下载失败：{names}（可重跑同一命令续传）")
 
 
 def extract_tar(archive: Path, destination: Path, marker_name: str) -> None:
@@ -232,16 +530,18 @@ def a23_msmarco_passage_v1(ctx: Context) -> None:
     destination = ctx.data_root / "msmarco_passage_v1"
     base = "https://msmarco.z22.web.core.windows.net/msmarcoranking"
     specs = [
-        (
-            "collection.tar.gz",
-            ("md5", "87dd01826da3e2ad45447ba5af577628"),
-        ),
+        ("collection.tar.gz", ("md5", "87dd01826da3e2ad45447ba5af577628")),
         ("queries.tar.gz", None),
         ("qrels.train.tsv", None),
         ("qrels.dev.tsv", None),
     ]
-    for name, checksum in specs:
-        download(ctx, f"{base}/{name}", destination / name, checksum=checksum)
+    download_many(
+        ctx,
+        [
+            FetchItem(f"{base}/{name}", destination / name, checksum=checksum)
+            for name, checksum in specs
+        ],
+    )
     if ctx.extract:
         extract_tar(
             destination / "collection.tar.gz", destination, ".collection.extracted"
@@ -262,13 +562,16 @@ def a25_msmarco_passage_v2(ctx: Context) -> None:
     destination = ctx.data_root / "msmarco_passage_v2"
     base = "https://msmarco.z22.web.core.windows.net/msmarcoranking"
     headers = {"X-Ms-Version": "2019-12-12"}
-    for name in (
+    names = (
         "msmarco_v2_passage.tar",
         "passv2_train_queries.tsv",
         "passv2_train_qrels.tsv",
         "passv2_train_top100.txt.gz",
-    ):
-        download(ctx, f"{base}/{name}", destination / name, headers=headers)
+    )
+    download_many(
+        ctx,
+        [FetchItem(f"{base}/{name}", destination / name, headers=headers) for name in names],
+    )
 
 
 def export_ir_dataset(dataset: str, record_type: str, destination: Path) -> None:
@@ -365,16 +668,22 @@ BEIR_PUBLIC = (
 
 def a210_beir_public(ctx: Context) -> None:
     destination = ctx.data_root / "beir/public"
-    for name in BEIR_PUBLIC:
-        archive = destination / f"{name}.zip"
-        download(
-            ctx,
-            f"https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/"
-            f"datasets/{name}.zip",
-            archive,
-        )
-        if ctx.extract:
-            extract_zip(archive, destination)
+    download_many(
+        ctx,
+        [
+            FetchItem(
+                f"https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/"
+                f"datasets/{name}.zip",
+                destination / f"{name}.zip",
+            )
+            for name in BEIR_PUBLIC
+        ],
+    )
+    if ctx.extract:
+        for name in BEIR_PUBLIC:
+            archive = destination / f"{name}.zip"
+            if archive.exists():
+                extract_zip(archive, destination)
 
 
 def gunzip_keep(source: Path) -> None:
@@ -425,22 +734,37 @@ def a211_beir_indexes(ctx: Context) -> None:
         "https://huggingface.co/datasets/castorini/prebuilt-indexes-beir/"
         "resolve/main/lucene-inverted/flat"
     )
-    for _, remote_name, local_name, checksum in specs:
-        archive = archives / local_name
-        download(ctx, f"{base}/{remote_name}", archive, checksum=checksum)
-        if ctx.extract:
-            extract_tar(archive, indexes, f".{local_name}.extracted")
+    download_many(
+        ctx,
+        [
+            FetchItem(
+                f"{base}/{remote_name}",
+                archives / local_name,
+                checksum=checksum,
+            )
+            for _, remote_name, local_name, checksum in specs
+        ],
+    )
+    if ctx.extract:
+        for _, _, local_name, _ in specs:
+            archive = archives / local_name
+            if archive.exists():
+                extract_tar(archive, indexes, f".{local_name}.extracted")
 
     commit = "0b4acbd929edd11edfd16250457fb70ff69e9b4f"
     eval_base = f"https://raw.githubusercontent.com/castorini/eval/{commit}"
+    metadata_items = []
     for name, _, _, _ in specs:
         topics_name = f"topics.beir-v1.0.0-{name}.test.tsv.gz"
         qrels_name = f"qrels.beir-v1.0.0-{name}.test.txt"
-        topics = metadata / topics_name
-        download(ctx, f"{eval_base}/topics/{topics_name}", topics)
-        download(ctx, f"{eval_base}/qrels/{qrels_name}", metadata / qrels_name)
-        if ctx.extract:
-            gunzip_keep(topics)
+        metadata_items.append(FetchItem(f"{eval_base}/topics/{topics_name}", metadata / topics_name))
+        metadata_items.append(FetchItem(f"{eval_base}/qrels/{qrels_name}", metadata / qrels_name))
+    download_many(ctx, metadata_items)
+    if ctx.extract:
+        for name, _, _, _ in specs:
+            topics = metadata / f"topics.beir-v1.0.0-{name}.test.tsv.gz"
+            if topics.exists():
+                gunzip_keep(topics)
 
 
 def a212_mteb(ctx: Context) -> None:
@@ -474,12 +798,13 @@ def a214_pmc_patients(ctx: Context) -> None:
         ("43054744", "ReCDS_benchmark.tar.gz"),
         ("43055212", "Meta_data.tar.gz"),
     )
-    for file_id, name in specs:
-        download(
-            ctx,
-            f"https://ndownloader.figshare.com/files/{file_id}",
-            destination / name,
-        )
+    download_many(
+        ctx,
+        [
+            FetchItem(f"https://ndownloader.figshare.com/files/{file_id}", destination / name)
+            for file_id, name in specs
+        ],
+    )
 
 
 TASKS: OrderedDict[str, Task] = OrderedDict(
@@ -554,7 +879,18 @@ def parse_args() -> argparse.Namespace:
         "--connections",
         type=int,
         default=16,
-        help="aria2 connections per file (default: 16)",
+        help="每个文件的分片连接数 (default: 16)",
+    )
+    parser.add_argument(
+        "--files-in-parallel",
+        type=int,
+        default=4,
+        help="同一个任务里同时下载几个文件 (default: 4)",
+    )
+    parser.add_argument(
+        "--use-aria2",
+        action="store_true",
+        help="改用 aria2c 下载（默认用内置的多连接下载器）",
     )
     parser.add_argument(
         "--no-extract",
@@ -585,8 +921,10 @@ def main() -> int:
             "--all includes multiple very large corpora (well over 70 GB). "
             "Add --yes after checking disk space."
         )
-    if not 1 <= args.connections <= 32:
-        raise ValueError("--connections must be between 1 and 32")
+    if not 1 <= args.connections <= 64:
+        raise ValueError("--connections must be between 1 and 64")
+    if not 1 <= args.files_in_parallel <= 16:
+        raise ValueError("--files-in-parallel must be between 1 and 16")
 
     selected = list(TASKS.values()) if args.all else resolve_tasks(args.tasks)
     context = Context(
@@ -595,9 +933,16 @@ def main() -> int:
         connections=args.connections,
         repair=args.repair,
         extract=not args.no_extract,
+        files_in_parallel=args.files_in_parallel,
+        use_aria2=args.use_aria2,
     )
     print(f"Dataset root: {context.data_root}")
     print("Selected:", ", ".join(task.section for task in selected))
+    print(
+        f"下载方式: 每个文件 {context.connections} 个分片，"
+        f"同时下 {context.files_in_parallel} 个文件"
+        + ("（aria2c）" if context.use_aria2 else "（内置多连接）")
+    )
     if context.repair:
         print("Repair mode: selected target files will be redownloaded.")
 

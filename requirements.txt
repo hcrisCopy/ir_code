@@ -20,3 +20,6 @@ duckdb
 jieba
 tqdm
 requests
+
+# 大型 JSON 映射流式读取
+ijson
