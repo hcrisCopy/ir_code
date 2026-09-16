@@ -18,3 +18,4 @@ pyarrow
 duckdb
 jieba
 tqdm
+requests
